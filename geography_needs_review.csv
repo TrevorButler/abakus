@@ -1,0 +1,18 @@
+NAME,NAMELSAD,City Long,CountState,STATE_NAME,state_abbr,county_namelsad,issue,candidates,resolved_geoid
+Oak Grove,Oak Grove CDP,"Oak Grove CDP, Tennessee","Sumner County, Tennessee",Tennessee,TN,Sumner County,ambiguous name match,"['4754640', '4754700']",4754640
+Oak Grove,Oak Grove CDP,"Oak Grove CDP, Tennessee","Washington County, Tennessee",Tennessee,TN,Washington County,ambiguous name match,"['4754640', '4754700']",4754700
+Walnut Grove,Walnut Grove CDP,"Walnut Grove CDP, Tennessee","Hardin County, Tennessee",Tennessee,TN,Hardin County,ambiguous name match,"['4777760', '4777820']",4777760
+Walnut Grove,Walnut Grove CDP,"Walnut Grove CDP, Tennessee","Sumner County, Tennessee",Tennessee,TN,Sumner County,ambiguous name match,"['4777760', '4777820']",4777820
+Shady Grove,Shady Grove CDP,"Shady Grove CDP, Oklahoma","Cherokee County, Oklahoma",Oklahoma,OK,Cherokee County,ambiguous name match,"['4066510', '4066520']",4066510
+Shady Grove,Shady Grove CDP,"Shady Grove CDP, Oklahoma","McIntosh County, Oklahoma",Oklahoma,OK,McIntosh County,ambiguous name match,"['4066510', '4066520']",4066520
+East Laurinburg,East Laurinburg town,"East Laurinburg town, North Carolina","Scotland County, North Carolina",North Carolina,NC,Scotland County,no Gazetteer match found,,3719620
+Golden Glades,Golden Glades CDP,"Golden Glades CDP, Florida","Miami-Dade County, Florida",Florida,FL,Miami-Dade County,no Gazetteer match found,,1226375
+Midway,Midway CDP,"Midway CDP, Florida","Seminole County, Florida",Florida,FL,Seminole County,ambiguous name match,"['1245425', '1245465', '1245475']",1245475
+Pine Ridge,Pine Ridge CDP,"Pine Ridge CDP, Florida","Citrus County, Florida",Florida,FL,Citrus County,ambiguous name match,"['1257058', '1257066']",1257058
+Pine Ridge,Pine Ridge CDP,"Pine Ridge CDP, Florida","Collier County, Florida",Florida,FL,Collier County,ambiguous name match,"['1257058', '1257066']",1257066
+University,University CDP,"University CDP, Florida","Hillsborough County, Florida",Florida,FL,Hillsborough County,ambiguous name match,"['1273163', '1273172']",1273163
+University,University CDP,"University CDP, Florida","Orange County, Florida",Florida,FL,Orange County,ambiguous name match,"['1273163', '1273172']",1273172
+Whitfield,Whitfield CDP,"Whitfield CDP, Florida","Manatee County, Florida",Florida,FL,Manatee County,ambiguous name match,"['1277467', '1277470']",1277467
+Whitfield,Whitfield CDP,"Whitfield CDP, Florida","Santa Rosa County, Florida",Florida,FL,Santa Rosa County,ambiguous name match,"['1277467', '1277470']",1277470
+Mount Olive,Mount Olive CDP,"Mount Olive CDP, Alabama","Coosa County, Alabama",Alabama,AL,Coosa County,ambiguous name match,"['0152320', '0152344']",0152320
+Mount Olive,Mount Olive CDP,"Mount Olive CDP, Alabama","Jefferson County, Alabama",Alabama,AL,Jefferson County,ambiguous name match,"['0152320', '0152344']",0152344

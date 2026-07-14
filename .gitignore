@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs and ephemeral run output
+*.log
+
+# Secrets (never commit real credentials)
+.env
+.env.local
+
+# Large source/generated geospatial data -- regenerable via
+# build_geo_assets.py against Clean Shapefiles/, not hand-edited.
+# Clean Shapefiles/ itself (~90MB of raw TIGER shapefiles) is also
+# excluded; source it from wherever it was originally provided if a
+# fresh clone needs to regenerate geo_assets/.
+Clean Shapefiles/
+geo_assets/
+
+# Frontend (added once scaffolded)
+node_modules/
+dist/
+build/
+
+# Claude Code local tool state -- machine-specific, not project source
+.claude/
