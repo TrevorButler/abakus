@@ -17,6 +17,19 @@ export interface StateOption {
   state_name: string
 }
 
+export interface LineChart {
+  chart_type: 'line'
+  series: Record<string, number>
+}
+
+export interface StackedBarChart {
+  chart_type: 'stacked_bar'
+  categories: Record<string, Record<string, number>>
+}
+
+export type ChartResult = LineChart | StackedBarChart
+export type DashboardResult = Record<string, ChartResult>
+
 async function get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
   const url = new URL(`/api${path}`, window.location.origin)
   if (params) {
@@ -39,4 +52,7 @@ export const api = {
     get<GeographySummary[]>('/geography/search', params),
 
   getGeography: (geoid: string) => get<GeographySummary & { geo_type: GeoType; state_name: string }>(`/geography/${geoid}`),
+
+  getDashboard: (geoid: string, params: { start_year: number; end_year: number; charts?: string }) =>
+    get<DashboardResult>(`/dashboard/${geoid}`, params),
 }

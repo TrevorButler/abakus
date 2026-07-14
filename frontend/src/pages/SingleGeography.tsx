@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, type GeoType, type GeographySummary } from '../lib/api'
 import GeographyList from '../components/GeographyList'
 import GeographyMap from '../components/GeographyMap'
 
 export default function SingleGeography() {
+  const navigate = useNavigate()
   const [geoType, setGeoType] = useState<GeoType>('place')
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
   const [selectedGeoid, setSelectedGeoid] = useState<string | null>(null)
@@ -77,6 +78,7 @@ export default function SingleGeography() {
           </p>
           <button
             type="button"
+            onClick={() => navigate(`/single/${selectedGeo.geoid}`)}
             className="bg-abakus-blue text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity"
           >
             Open Dashboard
