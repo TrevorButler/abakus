@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* Palette and type from abakus_visualguide.pdf. Neue Haas Grotesk Display
+   is a licensed font (not bundled here) -- falls back to a comparable
+   system grotesque until the actual font files are added under
+   src/assets/fonts/ and declared with @font-face. */
+@theme {
+  --font-sans: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  --color-abakus-blue: #36bfee;
+  --color-abakus-pink: #f7a097;
+  --color-abakus-orange: #fbab34;
+  --color-abakus-green: #85c66b;
+  --color-abakus-cream: #fcfcf2;
+  --color-abakus-light-grey: #4f4e52;
+  --color-abakus-dark-grey: #262628;
+  --color-abakus-charcoal: #060607;
+
+  /* Secondary warm accent scale, from the visual guide's locked palette */
+  --color-abakus-warm-50: #fcfcf3;
+  --color-abakus-warm-100: #f7d3a1;
+  --color-abakus-warm-200: #f3b968;
+  --color-abakus-warm-300: #eba39a;
+  --color-abakus-warm-400: #e17466;
+}
+
+body {
+  margin: 0;
+  background: var(--color-abakus-cream);
+  color: var(--color-abakus-charcoal);
+}
