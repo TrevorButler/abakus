@@ -6,6 +6,12 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    // Pinned rather than left to resolve "localhost" -- the OAuth session
+    // cookie is host-scoped, and "localhost"/"127.0.0.1"/"::1" are distinct
+    // hosts to a cookie jar even though they're the same machine, so this
+    // must match the backend's own local host and the Google OAuth redirect
+    // URI exactly or sign-in silently fails to persist.
+    host: '127.0.0.1',
     proxy: {
       // FastAPI backend runs separately (uvicorn api:app) -- proxy avoids
       // hardcoding the backend URL in frontend code and sidesteps CORS

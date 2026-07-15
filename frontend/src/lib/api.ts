@@ -70,6 +70,20 @@ export type RateBasis = '5yr' | '10yr' | 'custom'
 export type TurnoverTier = 'static' | 'dampened' | 'standard' | 'elevated' | 'aggressive' | 'custom'
 export type DemandBasis = 'annual' | 'total'
 
+export type UserRole = 'user' | 'admin'
+
+export interface AuthUser {
+  email: string
+  role: UserRole
+}
+
+export interface AppUser {
+  email: string
+  role: UserRole
+  added_by: string | null
+  created_at: string
+}
+
 export interface TurnoverTierOption {
   key: string
   label: string
@@ -132,6 +146,18 @@ export function mapAssetUrl(filename: string): string {
   return base ? `${base.replace(/\/$/, '')}/assets/${filename}` : `/map-assets/${filename}`
 }
 
+// credentials: 'include' is required on every call now that data routes are
+// gated behind a session cookie -- without it, the browser won't attach the
+// cookie on cross-origin requests (frontend and backend are separate
+// origins in production), and every request would 401.
+async function handle<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail ?? `Request failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 async function get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
   const url = new URL(`${API_BASE}${path}`, window.location.origin)
   if (params) {
@@ -139,12 +165,23 @@ async function get<T>(path: string, params?: Record<string, string | number | un
       if (value !== undefined) url.searchParams.set(key, String(value))
     }
   }
-  const res = await fetch(url.toString())
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.detail ?? `Request failed: ${res.status}`)
-  }
-  return res.json()
+  const res = await fetch(url.toString(), { credentials: 'include' })
+  return handle<T>(res)
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return handle<T>(res)
+}
+
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { method: 'DELETE', credentials: 'include' })
+  return handle<T>(res)
 }
 
 export const api = {
@@ -171,4 +208,16 @@ export const api = {
     get<HousingDemandResult>('/housing-demand/region', { ...params, geoids: geoids.join(',') }),
 
   getTurnoverTiers: () => get<TurnoverTierOption[]>('/housing-demand/assumptions/turnover-tiers'),
+
+  auth: {
+    me: () => get<AuthUser>('/auth/me'),
+    loginUrl: () => `${API_BASE}/auth/login`,
+    logoutUrl: () => `${API_BASE}/auth/logout`,
+  },
+
+  admin: {
+    listUsers: () => get<AppUser[]>('/admin/users'),
+    addUser: (email: string, role: UserRole) => post<AppUser>('/admin/users', { email, role }),
+    removeUser: (email: string) => del<{ deleted: string }>(`/admin/users/${encodeURIComponent(email)}`),
+  },
 }

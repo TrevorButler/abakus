@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import ComparativeAnalysis from './pages/ComparativeAnalysis'
 import RegionalAnalysis from './pages/RegionalAnalysis'
 import HousingDemand from './pages/HousingDemand'
+import Admin from './pages/Admin'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/comparative" element={<ComparativeAnalysis />} />
         <Route path="/regional" element={<RegionalAnalysis />} />
         <Route path="/housing-demand" element={<HousingDemand />} />
+        <Route path="/admin" element={<Admin />} />
       </Routes>
     </Layout>
   )
