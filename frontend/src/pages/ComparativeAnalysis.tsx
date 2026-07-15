@@ -111,82 +111,87 @@ export default function ComparativeAnalysis() {
         ]}
       />
 
-      <div>
-        <p className="text-sm text-abakus-light-grey mb-2 text-center">Primary geography</p>
-        <GeographyList
-          key={`primary-${geoType}`}
-          geoType={geoType}
-          selectedGeoids={primaryGeoid ? [primaryGeoid] : []}
-          onToggle={setPrimaryGeoid}
-        />
-      </div>
-
-      {primaryGeo && (
-        <div className="w-full max-w-lg flex flex-col gap-4">
-          <div>
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <p className="text-sm text-abakus-light-grey text-center">
-                Comparison geographies ({comparisonGeoids.length}/{MAX_COMPARISONS}) -- suggested most similar to{' '}
-                {primaryGeo.display_name} are pre-selected
-              </p>
-            </div>
-            <div className="flex items-center justify-center gap-2 mb-2 text-sm">
-              <label className="flex items-center gap-2 text-abakus-light-grey">
-                Suggest from
-                <select
-                  value={suggestionState}
-                  onChange={(e) => setSuggestionState(e.target.value)}
-                  className="border border-abakus-charcoal/20 rounded-lg px-2 py-1 bg-white text-abakus-charcoal"
-                >
-                  <option value="">All states</option>
-                  {states.map((s) => (
-                    <option key={s.state_abbr} value={s.state_abbr}>
-                      {s.state_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <ul className="border border-abakus-charcoal/10 rounded-lg bg-white divide-y divide-abakus-charcoal/5">
-              {suggestions.map((s) => (
-                <li key={s.geoid}>
-                  <button
-                    type="button"
-                    onClick={() => toggleComparison(s.geoid)}
-                    disabled={!comparisonGeoids.includes(s.geoid) && comparisonGeoids.length >= MAX_COMPARISONS}
-                    className={`w-full text-left px-4 py-2 text-sm flex justify-between ${
-                      comparisonGeoids.includes(s.geoid) ? 'bg-abakus-pink/10 font-medium' : 'hover:bg-abakus-cream'
-                    }`}
-                  >
-                    <span>{s.display_name}</span>
-                    <span className="text-abakus-light-grey">#{s.rank}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <p className="text-sm text-abakus-light-grey mb-2 text-center">Or search for others</p>
-            <GeographyList
-              key={`comparison-${geoType}`}
-              geoType={geoType}
-              selectedGeoids={comparisonGeoids}
-              onToggle={toggleComparison}
-              maxSelect={MAX_COMPARISONS}
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowDashboard(true)}
-            disabled={comparisonGeoids.length === 0}
-            className="bg-abakus-pink text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40"
-          >
-            Open Dashboard
-          </button>
+      {/* Desktop-first: once a primary is picked, the picker moves to the
+          left and the comparison-selection tools sit alongside it on the
+          right rather than stacking everything in one narrow column. */}
+      <div className={`w-full ${primaryGeo ? 'max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-start' : 'flex justify-center'}`}>
+        <div>
+          <p className="text-sm text-abakus-light-grey mb-2 text-center">Primary geography</p>
+          <GeographyList
+            key={`primary-${geoType}`}
+            geoType={geoType}
+            selectedGeoids={primaryGeoid ? [primaryGeoid] : []}
+            onToggle={setPrimaryGeoid}
+          />
         </div>
-      )}
+
+        {primaryGeo && (
+          <div className="flex flex-col gap-4">
+            <div>
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <p className="text-sm text-abakus-light-grey text-center">
+                  Comparison geographies ({comparisonGeoids.length}/{MAX_COMPARISONS}) -- suggested most similar to{' '}
+                  {primaryGeo.display_name} are pre-selected
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-2 mb-2 text-sm">
+                <label className="flex items-center gap-2 text-abakus-light-grey">
+                  Suggest from
+                  <select
+                    value={suggestionState}
+                    onChange={(e) => setSuggestionState(e.target.value)}
+                    className="border border-abakus-charcoal/20 rounded-lg px-2 py-1 bg-white text-abakus-charcoal"
+                  >
+                    <option value="">All states</option>
+                    {states.map((s) => (
+                      <option key={s.state_abbr} value={s.state_abbr}>
+                        {s.state_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <ul className="border border-abakus-charcoal/10 rounded-lg bg-white divide-y divide-abakus-charcoal/5">
+                {suggestions.map((s) => (
+                  <li key={s.geoid}>
+                    <button
+                      type="button"
+                      onClick={() => toggleComparison(s.geoid)}
+                      disabled={!comparisonGeoids.includes(s.geoid) && comparisonGeoids.length >= MAX_COMPARISONS}
+                      className={`w-full text-left px-4 py-2 text-sm flex justify-between ${
+                        comparisonGeoids.includes(s.geoid) ? 'bg-abakus-pink/10 font-medium' : 'hover:bg-abakus-cream'
+                      }`}
+                    >
+                      <span>{s.display_name}</span>
+                      <span className="text-abakus-light-grey">#{s.rank}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-sm text-abakus-light-grey mb-2 text-center">Or search for others</p>
+              <GeographyList
+                key={`comparison-${geoType}`}
+                geoType={geoType}
+                selectedGeoids={comparisonGeoids}
+                onToggle={toggleComparison}
+                maxSelect={MAX_COMPARISONS}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowDashboard(true)}
+              disabled={comparisonGeoids.length === 0}
+              className="bg-abakus-pink text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 self-center"
+            >
+              Open Dashboard
+            </button>
+          </div>
+        )}
+      </div>
 
       <Link to="/" className="text-abakus-blue hover:underline text-sm mt-auto">
         Back to mode selection

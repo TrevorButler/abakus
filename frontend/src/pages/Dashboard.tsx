@@ -5,7 +5,8 @@ import { CHART_META, type ChartViewMode } from '../lib/chartMeta'
 import LineChartCard from '../components/charts/LineChartCard'
 import StackedBarChartCard from '../components/charts/StackedBarChartCard'
 import BinBarChartCard from '../components/charts/BinBarChartCard'
-import { downloadWorkbook, dashboardSheets } from '../lib/download'
+import { dashboardSheets } from '../lib/download'
+import DownloadSheetsButton from '../components/DownloadSheetsButton'
 
 const MIN_YEAR = 2010
 const MAX_YEAR = 2024
@@ -70,7 +71,7 @@ export default function Dashboard() {
       {loading && <p className="text-abakus-light-grey">Loading dashboard...</p>}
 
       {dashboard && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 w-full max-w-6xl">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 w-full max-w-[1600px]">
           {Object.entries(dashboard).map(([key, chart]) => {
             const meta = CHART_META[key] ?? { title: key, format: 'count' as const }
             if (chart.chart_type === 'line') {
@@ -102,18 +103,10 @@ export default function Dashboard() {
       )}
 
       {dashboard && (
-        <button
-          type="button"
-          onClick={() =>
-            downloadWorkbook(
-              `${geo?.display_name ?? geoid}.xlsx`,
-              dashboardSheets(dashboard, (key) => CHART_META[key]?.title ?? key, viewMode)
-            )
-          }
-          className="bg-abakus-charcoal text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity"
-        >
-          Download Data
-        </button>
+        <DownloadSheetsButton
+          filename={`${geo?.display_name ?? geoid}.xlsx`}
+          sheets={dashboardSheets(dashboard, (key) => CHART_META[key]?.title ?? key, viewMode)}
+        />
       )}
     </div>
   )

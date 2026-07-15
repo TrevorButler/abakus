@@ -8,7 +8,8 @@ import LineChartCard from '../components/charts/LineChartCard'
 import StackedBarChartCard from '../components/charts/StackedBarChartCard'
 import BinBarChartCard from '../components/charts/BinBarChartCard'
 import MultiGeoDashboard from './MultiGeoDashboard'
-import { downloadWorkbook, dashboardSheets } from '../lib/download'
+import { dashboardSheets } from '../lib/download'
+import DownloadSheetsButton from '../components/DownloadSheetsButton'
 
 const MAX_REGION_SIZE = 50
 const MIN_YEAR = 2010
@@ -180,7 +181,7 @@ function AggregatedDashboard({ geoids, onBack }: { geoids: string[]; onBack: () 
       {loading && <p className="text-abakus-light-grey">Loading...</p>}
 
       {charts && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 w-full max-w-6xl">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 w-full max-w-[1600px]">
           {Object.entries(charts).map(([key, chart]) => {
             const meta = CHART_META[key] ?? { title: key, format: 'count' as const }
             if (chart.chart_type === 'line') {
@@ -212,13 +213,10 @@ function AggregatedDashboard({ geoids, onBack }: { geoids: string[]; onBack: () 
       )}
 
       {charts && (
-        <button
-          type="button"
-          onClick={() => downloadWorkbook('Regional Analysis.xlsx', dashboardSheets(charts, (key) => CHART_META[key]?.title ?? key, viewMode))}
-          className="bg-abakus-charcoal text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity"
-        >
-          Download Data
-        </button>
+        <DownloadSheetsButton
+          filename="Regional Analysis.xlsx"
+          sheets={dashboardSheets(charts, (key) => CHART_META[key]?.title ?? key, viewMode)}
+        />
       )}
     </div>
   )

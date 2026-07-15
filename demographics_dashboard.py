@@ -432,20 +432,24 @@ def housing_unit_type_simplified(engine, geoid, start_year, end_year):
 
 
 def year_built(engine, geoid, start_year, end_year):
+    # Dict order here is what drives display order end-to-end (chart X axis,
+    # CSV/workbook rows) -- category_breakdown() iterates numerator_codes in
+    # insertion order, and both Python dicts and JSON objects preserve it.
+    # Oldest to newest, chronological.
     codes = {
-        "Built 2020 or later": "DP04_0017", "Built 2010 to 2019": "DP04_0018", "Built 2000 to 2009": "DP04_0019",
-        "Built 1990 to 1999": "DP04_0020", "Built 1980 to 1989": "DP04_0021", "Built 1970 to 1979": "DP04_0022",
-        "Built 1960 to 1969": "DP04_0023", "Built 1950 to 1959": "DP04_0024", "Built 1940 to 1949": "DP04_0025",
-        "Built 1939 or earlier": "DP04_0026",
+        "Built 1939 or earlier": "DP04_0026", "Built 1940 to 1949": "DP04_0025", "Built 1950 to 1959": "DP04_0024",
+        "Built 1960 to 1969": "DP04_0023", "Built 1970 to 1979": "DP04_0022", "Built 1980 to 1989": "DP04_0021",
+        "Built 1990 to 1999": "DP04_0020", "Built 2000 to 2009": "DP04_0019", "Built 2010 to 2019": "DP04_0018",
+        "Built 2020 or later": "DP04_0017",
     }
     return category_breakdown(engine, geoid, "DP04", codes, "DP04_0016", start_year, end_year, most_recent_year_only=True, chart_type="bar")
 
 
 def year_moved_in(engine, geoid, start_year, end_year):
     codes = {
-        "Moved in 2021 or later": "DP04_0051", "Moved in 2018 to 2020": "DP04_0052",
-        "Moved in 2010 to 2017": "DP04_0053", "Moved in 2000 to 2009": "DP04_0054",
-        "Moved in 1990 to 1999": "DP04_0055", "Moved in 1989 and earlier": "DP04_0056",
+        "Moved in 1989 and earlier": "DP04_0056", "Moved in 1990 to 1999": "DP04_0055",
+        "Moved in 2000 to 2009": "DP04_0054", "Moved in 2010 to 2017": "DP04_0053",
+        "Moved in 2018 to 2020": "DP04_0052", "Moved in 2021 or later": "DP04_0051",
     }
     return category_breakdown(engine, geoid, "DP04", codes, "DP04_0050", start_year, end_year, most_recent_year_only=True, chart_type="bar")
 

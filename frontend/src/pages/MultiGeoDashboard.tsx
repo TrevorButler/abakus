@@ -4,7 +4,8 @@ import { CHART_META, type ChartViewMode } from '../lib/chartMeta'
 import MultiGeoLineChartCard from '../components/charts/MultiGeoLineChartCard'
 import MultiGeoStackedBarChartCard from '../components/charts/MultiGeoStackedBarChartCard'
 import MultiGeoBinBarChartCard from '../components/charts/MultiGeoBinBarChartCard'
-import { downloadWorkbook, multiGeoDashboardSheets } from '../lib/download'
+import { multiGeoDashboardSheets } from '../lib/download'
+import DownloadSheetsButton from '../components/DownloadSheetsButton'
 
 const MIN_YEAR = 2010
 const MAX_YEAR = 2024
@@ -71,7 +72,7 @@ export default function MultiGeoDashboard({ geographies }: Props) {
       {loading && <p className="text-abakus-light-grey">Loading...</p>}
 
       {!loading && Object.keys(dataByGeoid).length > 0 && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full max-w-6xl">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 w-full max-w-[1800px]">
           {chartNames.map((key) => {
             const meta = CHART_META[key]
             const firstResult = dataByGeoid[geographies[0].geoid]?.[key]
@@ -116,18 +117,10 @@ export default function MultiGeoDashboard({ geographies }: Props) {
       )}
 
       {!loading && Object.keys(dataByGeoid).length > 0 && (
-        <button
-          type="button"
-          onClick={() =>
-            downloadWorkbook(
-              'Comparison.xlsx',
-              multiGeoDashboardSheets(geographies, dataByGeoid, chartNames, (key) => CHART_META[key]?.title ?? key, viewMode)
-            )
-          }
-          className="bg-abakus-charcoal text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity"
-        >
-          Download Data
-        </button>
+        <DownloadSheetsButton
+          filename="Comparison.xlsx"
+          sheets={multiGeoDashboardSheets(geographies, dataByGeoid, chartNames, (key) => CHART_META[key]?.title ?? key, viewMode)}
+        />
       )}
     </div>
   )

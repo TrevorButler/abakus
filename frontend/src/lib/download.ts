@@ -80,7 +80,8 @@ export function binRows(categories: Record<string, Record<string, number>>): (st
   const years = Object.keys(categories)
   const year = years[years.length - 1]
   const data = year ? categories[year] : {}
-  return [['Bin', 'Value'], ...Object.entries(data ?? {})]
+  const bins = Object.keys(data ?? {})
+  return [['Year', ...bins], [year ?? '', ...bins.map((b) => data![b])]]
 }
 
 export function ageIncomeRows(cells: { age_group: string; income_bin: string; demand: number }[]): (string | number)[][] {
@@ -100,20 +101,37 @@ export function multiGeoSeriesRows(
   ]
 }
 
-// Long format (Geography, Year, Category, Value) -- a wide format gets
-// unwieldy once there are several categories times several geographies.
+// Wide format: one row per (Geography, Year), one column per category --
+// mirrors categoriesRows()'s single-geo shape with a Geography column
+// prepended. Category set can vary across geographies/years (a bin with no
+// data somewhere), so the column list is the union across everything,
+// stable-ordered by first appearance.
 export function multiGeoCategoriesRows(
   geographies: { geoid: string; label: string }[],
   categoriesByGeoid: Record<string, Record<string, Record<string, number>>>,
   years: string[]
 ): (string | number)[][] {
-  const rows: (string | number)[][] = [['Geography', 'Year', 'Category', 'Value']]
+  const categoryNames: string[] = []
+  const seen = new Set<string>()
+  for (const g of geographies) {
+    const cats = categoriesByGeoid[g.geoid] ?? {}
+    for (const y of years) {
+      Object.keys(cats[y] ?? {}).forEach((c) => {
+        if (!seen.has(c)) {
+          seen.add(c)
+          categoryNames.push(c)
+        }
+      })
+    }
+  }
+
+  const rows: (string | number)[][] = [['Geography', 'Year', ...categoryNames]]
   for (const g of geographies) {
     const cats = categoriesByGeoid[g.geoid] ?? {}
     for (const y of years) {
       const yearCats = cats[y]
       if (!yearCats) continue
-      for (const [cat, val] of Object.entries(yearCats)) rows.push([g.label, y, cat, val])
+      rows.push([g.label, y, ...categoryNames.map((c) => yearCats[c] ?? '')])
     }
   }
   return rows
@@ -187,17 +205,35 @@ export function multiGeoDashboardSheets(
   return sheets
 }
 
+// Wide format: one row per geography, one column per bin (each geography's
+// own most-recent year, same convention as MultiGeoBinBarChartCard).
 export function multiGeoBinRows(
   geographies: { geoid: string; label: string }[],
   categoriesByGeoid: Record<string, Record<string, Record<string, number>>>
 ): (string | number)[][] {
-  const rows: (string | number)[][] = [['Geography', 'Year', 'Bin', 'Value']]
+  const bins: string[] = []
+  const seen = new Set<string>()
+  const yearByGeoid: Record<string, string | undefined> = {}
   for (const g of geographies) {
     const cats = categoriesByGeoid[g.geoid] ?? {}
     const years = Object.keys(cats)
     const year = years[years.length - 1]
+    yearByGeoid[g.geoid] = year
     if (!year) continue
-    for (const [bin, val] of Object.entries(cats[year])) rows.push([g.label, year, bin, val])
+    Object.keys(cats[year]).forEach((b) => {
+      if (!seen.has(b)) {
+        seen.add(b)
+        bins.push(b)
+      }
+    })
+  }
+
+  const rows: (string | number)[][] = [['Geography', 'Year', ...bins]]
+  for (const g of geographies) {
+    const year = yearByGeoid[g.geoid]
+    if (!year) continue
+    const data = categoriesByGeoid[g.geoid][year]
+    rows.push([g.label, year, ...bins.map((b) => data[b] ?? '')])
   }
   return rows
 }
