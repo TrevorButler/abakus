@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import {
   api,
   type DemandBasis,
-  type GeographySummary,
   type GeoType,
   type HousingDemandResult,
   type RateBasis,
@@ -33,11 +32,14 @@ function mergeActualProjected(actual: Record<string, number>, projected: Record<
   return merged
 }
 
+const MAX_REGION_SIZE = 50
+
 export default function HousingDemand() {
   const [geoType, setGeoType] = useState<GeoType>('place')
+  const [scope, setScope] = useState<'single' | 'region'>('single')
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
-  const [selectedGeoid, setSelectedGeoid] = useState<string | null>(null)
-  const [selectedGeo, setSelectedGeo] = useState<GeographySummary | null>(null)
+  const [selectedGeoids, setSelectedGeoids] = useState<string[]>([])
+  const [geoLabels, setGeoLabels] = useState<Record<string, string>>({})
 
   const [baseYear, setBaseYear] = useState(2024)
   const [targetYear, setTargetYear] = useState(2029)
@@ -60,52 +62,77 @@ export default function HousingDemand() {
     api.getTurnoverTiers().then(setTurnoverTiers).catch(() => setTurnoverTiers([]))
   }, [])
 
+  // Single source of truth for display names, whether the geoid came from
+  // the list or the map -- both just emit geoids.
   useEffect(() => {
-    if (!selectedGeoid) {
-      setSelectedGeo(null)
-      return
-    }
-    api.getGeography(selectedGeoid).then(setSelectedGeo).catch(() => setSelectedGeo(null))
-  }, [selectedGeoid])
+    const missing = selectedGeoids.filter((g) => !(g in geoLabels))
+    if (missing.length === 0) return
+    Promise.all(
+      missing.map((g) => api.getGeography(g).then((geo) => [g, geo.display_name] as const).catch(() => [g, g] as const))
+    ).then((pairs) => setGeoLabels((prev) => ({ ...prev, ...Object.fromEntries(pairs) })))
+  }, [selectedGeoids, geoLabels])
 
   function handleGeoTypeChange(next: GeoType) {
     setGeoType(next)
-    setSelectedGeoid(null)
+    setSelectedGeoids([])
     setResult(null)
   }
 
+  function handleScopeChange(next: 'single' | 'region') {
+    setScope(next)
+    setSelectedGeoids([])
+    setResult(null)
+  }
+
+  function toggleGeo(geoid: string) {
+    setResult(null)
+    if (scope === 'single') {
+      setSelectedGeoids([geoid])
+      return
+    }
+    setSelectedGeoids((prev) => (prev.includes(geoid) ? prev.filter((g) => g !== geoid) : prev.length < MAX_REGION_SIZE ? [...prev, geoid] : prev))
+  }
+
   function runProjection() {
-    if (!selectedGeoid) return
+    if (selectedGeoids.length === 0) return
     setLoading(true)
     setError(null)
     setResult(null)
-    api
-      .getHousingDemand(selectedGeoid, {
-        base_year: baseYear,
-        target_year: targetYear,
-        pop_rate_basis: popRateBasis,
-        pop_custom_rate: popRateBasis === 'custom' ? popCustomRate / 100 : undefined,
-        hh_size_rate_basis: hhSizeRateBasis,
-        hh_size_custom_rate: hhSizeRateBasis === 'custom' ? hhSizeCustomRate / 100 : undefined,
-        turnover_tier: turnoverTier,
-        turnover_custom_rate: turnoverTier === 'custom' ? turnoverCustomRate / 100 : undefined,
-        b19037_rate_basis: b19037RateBasis,
-        b19037_custom_rate: b19037RateBasis === 'custom' ? b19037CustomRate / 100 : undefined,
-        b19037_demand_basis: b19037DemandBasis,
-      })
-      .then(setResult)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
+    const params = {
+      base_year: baseYear,
+      target_year: targetYear,
+      pop_rate_basis: popRateBasis,
+      pop_custom_rate: popRateBasis === 'custom' ? popCustomRate / 100 : undefined,
+      hh_size_rate_basis: hhSizeRateBasis,
+      hh_size_custom_rate: hhSizeRateBasis === 'custom' ? hhSizeCustomRate / 100 : undefined,
+      turnover_tier: turnoverTier,
+      turnover_custom_rate: turnoverTier === 'custom' ? turnoverCustomRate / 100 : undefined,
+      b19037_rate_basis: b19037RateBasis,
+      b19037_custom_rate: b19037RateBasis === 'custom' ? b19037CustomRate / 100 : undefined,
+      b19037_demand_basis: b19037DemandBasis,
+    }
+    const request = scope === 'single' ? api.getHousingDemand(selectedGeoids[0], params) : api.getHousingDemandRegion(selectedGeoids, params)
+    request.then(setResult).catch((e) => setError(e.message)).finally(() => setLoading(false))
   }
 
   return (
     <div className="flex-1 flex flex-col items-center px-6 py-12 gap-8">
       <div className="text-center">
         <h1 className="text-3xl font-medium text-abakus-charcoal mb-2">Housing Demand Projections</h1>
-        <p className="text-abakus-light-grey">Choose a place or county, then set your projection assumptions.</p>
+        <p className="text-abakus-light-grey">
+          {scope === 'single' ? 'Choose a place or county, then set your projection assumptions.' : 'Select a region, then set your projection assumptions.'}
+        </p>
       </div>
 
-      <div className="flex gap-6 items-center">
+      <div className="flex gap-6 items-center flex-wrap justify-center">
+        <ToggleGroup
+          value={scope}
+          onChange={(v) => handleScopeChange(v as 'single' | 'region')}
+          options={[
+            { value: 'single', label: 'Single Geography' },
+            { value: 'region', label: 'Region' },
+          ]}
+        />
         <ToggleGroup
           value={geoType}
           onChange={(v) => handleGeoTypeChange(v as GeoType)}
@@ -127,32 +154,32 @@ export default function HousingDemand() {
       <div className="w-full max-w-lg flex justify-center">
         {viewMode === 'list' ? (
           <GeographyList
-            key={geoType}
+            key={`${geoType}-${scope}`}
             geoType={geoType}
-            selectedGeoids={selectedGeoid ? [selectedGeoid] : []}
-            onToggle={(geoid) => {
-              setSelectedGeoid(geoid)
-              setResult(null)
-            }}
+            selectedGeoids={selectedGeoids}
+            onToggle={toggleGeo}
+            maxSelect={scope === 'region' ? MAX_REGION_SIZE : 1}
           />
         ) : (
           <div className="w-full">
-            <GeographyMap
-              geoType={geoType}
-              selectedGeoids={selectedGeoid ? [selectedGeoid] : []}
-              onToggle={(geoid) => {
-                setSelectedGeoid(geoid)
-                setResult(null)
-              }}
-            />
+            <GeographyMap geoType={geoType} selectedGeoids={selectedGeoids} onToggle={toggleGeo} />
           </div>
         )}
       </div>
 
-      {selectedGeo && (
+      {selectedGeoids.length > 0 && (
         <div className="w-full max-w-3xl flex flex-col gap-6 border-t border-abakus-charcoal/10 pt-8">
           <p className="text-abakus-charcoal text-center">
-            Selected: <span className="font-medium">{selectedGeo.display_name}</span>
+            {scope === 'single' ? (
+              <>
+                Selected: <span className="font-medium">{geoLabels[selectedGeoids[0]] ?? '...'}</span>
+              </>
+            ) : (
+              <>
+                {selectedGeoids.length} geograph{selectedGeoids.length === 1 ? 'y' : 'ies'} selected:{' '}
+                <span className="font-medium">{selectedGeoids.map((g) => geoLabels[g] ?? '...').join(', ')}</span>
+              </>
+            )}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white rounded-xl border border-abakus-charcoal/10 p-6">

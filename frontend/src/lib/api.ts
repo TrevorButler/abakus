@@ -84,7 +84,7 @@ export interface AgeIncomeCell {
 }
 
 export interface HousingDemandResult {
-  geoid: string
+  geoid: string | string[]
   base_year: number
   target_year: number
   population_rate: number
@@ -150,6 +150,9 @@ export const api = {
 
   getHousingDemand: (geoid: string, params: HousingDemandParams) =>
     get<HousingDemandResult>(`/housing-demand/${geoid}`, { ...params }),
+
+  getHousingDemandRegion: (geoids: string[], params: HousingDemandParams) =>
+    get<HousingDemandResult>('/housing-demand/region', { ...params, geoids: geoids.join(',') }),
 
   getTurnoverTiers: () => get<TurnoverTierOption[]>('/housing-demand/assumptions/turnover-tiers'),
 }

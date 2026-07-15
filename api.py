@@ -159,22 +159,15 @@ def list_charts():
 # Housing Demand Projections
 # ============================================================
 
-@app.get("/housing-demand/{geoid}")
-def get_housing_demand(
-    geoid: str,
-    base_year: int = Query(..., ge=2010, le=2024),
-    target_year: int = Query(..., gt=2010),
-    pop_rate_basis: RateBasis = "10yr",
-    pop_custom_rate: Optional[float] = None,
-    hh_size_rate_basis: RateBasis = "10yr",
-    hh_size_custom_rate: Optional[float] = None,
-    turnover_tier: TurnoverTier = "standard",
-    turnover_custom_rate: Optional[float] = None,
-    b19037_rate_basis: Optional[RateBasis] = "10yr",
-    b19037_custom_rate: Optional[float] = None,
-    b19037_demand_basis: DemandBasis = "annual",
-):
-    _require_geography(geoid)
+def _run_housing_demand(geoid, base_year: int, target_year: int, pop_rate_basis: RateBasis, pop_custom_rate,
+                         hh_size_rate_basis: RateBasis, hh_size_custom_rate, turnover_tier: TurnoverTier,
+                         turnover_custom_rate, b19037_rate_basis: Optional[RateBasis], b19037_custom_rate,
+                         b19037_demand_basis: DemandBasis):
+    """Shared by the single-geoid and region routes -- geoid is either a
+    str or a list of geoids, and every DB fetch beneath project_housing_demand()
+    sums across geographies before any rate/percentage math runs (see
+    housing_demand_projections.py), so this validation/response-shaping
+    logic doesn't need to know which case it's in."""
     if target_year <= base_year:
         raise HTTPException(status_code=400, detail="target_year must be after base_year")
     for basis, custom, field in [
@@ -209,6 +202,58 @@ def get_housing_demand(
             for (age_group, income_bin), demand in result["age_income_breakdown"].items()
         ]
     return result
+
+
+# NB: registered before /housing-demand/{geoid} -- same route-ordering
+# precedence issue as /dashboard/region vs /dashboard/{geoid}.
+@app.get("/housing-demand/region")
+def get_housing_demand_region(
+    geoids: str = Query(..., description="Comma-separated geoids to aggregate"),
+    base_year: int = Query(..., ge=2010, le=2024),
+    target_year: int = Query(..., gt=2010),
+    pop_rate_basis: RateBasis = "10yr",
+    pop_custom_rate: Optional[float] = None,
+    hh_size_rate_basis: RateBasis = "10yr",
+    hh_size_custom_rate: Optional[float] = None,
+    turnover_tier: TurnoverTier = "standard",
+    turnover_custom_rate: Optional[float] = None,
+    b19037_rate_basis: Optional[RateBasis] = "10yr",
+    b19037_custom_rate: Optional[float] = None,
+    b19037_demand_basis: DemandBasis = "annual",
+):
+    geoid_list = [g.strip() for g in geoids.split(",") if g.strip()]
+    if not geoid_list:
+        raise HTTPException(status_code=400, detail="geoids must contain at least one geoid")
+    for g in geoid_list:
+        _require_geography(g)
+    return _run_housing_demand(
+        geoid_list, base_year, target_year, pop_rate_basis, pop_custom_rate, hh_size_rate_basis,
+        hh_size_custom_rate, turnover_tier, turnover_custom_rate, b19037_rate_basis, b19037_custom_rate,
+        b19037_demand_basis,
+    )
+
+
+@app.get("/housing-demand/{geoid}")
+def get_housing_demand(
+    geoid: str,
+    base_year: int = Query(..., ge=2010, le=2024),
+    target_year: int = Query(..., gt=2010),
+    pop_rate_basis: RateBasis = "10yr",
+    pop_custom_rate: Optional[float] = None,
+    hh_size_rate_basis: RateBasis = "10yr",
+    hh_size_custom_rate: Optional[float] = None,
+    turnover_tier: TurnoverTier = "standard",
+    turnover_custom_rate: Optional[float] = None,
+    b19037_rate_basis: Optional[RateBasis] = "10yr",
+    b19037_custom_rate: Optional[float] = None,
+    b19037_demand_basis: DemandBasis = "annual",
+):
+    _require_geography(geoid)
+    return _run_housing_demand(
+        geoid, base_year, target_year, pop_rate_basis, pop_custom_rate, hh_size_rate_basis,
+        hh_size_custom_rate, turnover_tier, turnover_custom_rate, b19037_rate_basis, b19037_custom_rate,
+        b19037_demand_basis,
+    )
 
 
 @app.get("/housing-demand/assumptions/turnover-tiers")
