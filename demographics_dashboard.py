@@ -45,13 +45,27 @@ Census data-format quirks handled explicitly here, all found empirically
 """
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import create_engine, text
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://localhost/census_dashboard")
 
+# get_full_dashboard()/get_full_dashboard_region() run this many CHART_FUNCTIONS
+# concurrently (see _run_chart_functions) -- sized well above SQLAlchemy's
+# pool_size default (5) but capped rather than matched 1:1 to the full chart
+# count (27), to stay comfortable under a modest managed Postgres instance's
+# connection limit while still turning "27 sequential round-trips" into a
+# handful of concurrent waves.
+MAX_DASHBOARD_WORKERS = 10
+
 
 def get_engine():
-    return create_engine(DATABASE_URL)
+    # pool_size/max_overflow sized to comfortably cover MAX_DASHBOARD_WORKERS
+    # concurrent chart queries at once; pool_pre_ping guards against a pooled
+    # connection having been silently dropped by a proxy/load balancer in
+    # front of a managed cloud Postgres instance, which local dev never had
+    # to worry about.
+    return create_engine(DATABASE_URL, pool_size=10, max_overflow=10, pool_pre_ping=True)
 
 
 def fetch_multi(engine, geoid, table_id: str, variable_codes: list, start_year: int, end_year: int) -> dict:
@@ -786,9 +800,27 @@ CHART_FUNCTIONS = {
 }
 
 
+def _run_chart_functions(engine, geoid, start_year: int, end_year: int, names) -> dict:
+    """Runs the given CHART_FUNCTIONS entries concurrently. They're
+    independent read-only queries against the same geoid/year range -- there's
+    no data dependency between e.g. "population" and "race" -- so there's no
+    reason to make each one wait for the last to finish. This matters most on
+    a cold cache (e.g. right after a fresh deploy or database restore): 27
+    sequential queries each paying a cold-disk-read cost stack up to a
+    genuinely slow response (measured ~49s cold vs ~0.4s warm on Render's
+    Postgres after the initial production migration), while running them
+    concurrently lets that disk-wait time overlap instead. Threads (not
+    asyncio) are fine here since the work is I/O-bound -- psycopg2's blocking
+    calls release the GIL while waiting on the network/disk, so this gets
+    real concurrency despite the GIL."""
+    with ThreadPoolExecutor(max_workers=MAX_DASHBOARD_WORKERS) as pool:
+        futures = {name: pool.submit(CHART_FUNCTIONS[name], engine, geoid, start_year, end_year) for name in names}
+        return {name: future.result() for name, future in futures.items()}
+
+
 def get_full_dashboard(geoid: str, start_year: int, end_year: int, engine=None) -> dict:
     engine = engine or get_engine()
-    return {name: func(engine, geoid, start_year, end_year) for name, func in CHART_FUNCTIONS.items()}
+    return _run_chart_functions(engine, geoid, start_year, end_year, CHART_FUNCTIONS.keys())
 
 
 # True medians (Median Home Value, Median Rent, Median Age, Median Household
@@ -805,8 +837,5 @@ def get_full_dashboard_region(geoids: list, start_year: int, end_year: int, engi
     across geoids (fetch_multi/_fetch_dp04_by_label/_fetch_dp05_by_label sum
     in SQL/Python before any percentage math), true medians are excluded."""
     engine = engine or get_engine()
-    return {
-        name: func(engine, geoids, start_year, end_year)
-        for name, func in CHART_FUNCTIONS.items()
-        if name not in REGION_EXCLUDED_CHARTS
-    }
+    names = [name for name in CHART_FUNCTIONS if name not in REGION_EXCLUDED_CHARTS]
+    return _run_chart_functions(engine, geoids, start_year, end_year, names)
