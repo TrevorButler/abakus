@@ -5,6 +5,7 @@ import { CHART_META, type ChartViewMode } from '../lib/chartMeta'
 import LineChartCard from '../components/charts/LineChartCard'
 import StackedBarChartCard from '../components/charts/StackedBarChartCard'
 import BinBarChartCard from '../components/charts/BinBarChartCard'
+import { downloadWorkbook, dashboardSheets } from '../lib/download'
 
 const MIN_YEAR = 2010
 const MAX_YEAR = 2024
@@ -98,6 +99,21 @@ export default function Dashboard() {
             )
           })}
         </div>
+      )}
+
+      {dashboard && (
+        <button
+          type="button"
+          onClick={() =>
+            downloadWorkbook(
+              `${geo?.display_name ?? geoid}.xlsx`,
+              dashboardSheets(dashboard, (key) => CHART_META[key]?.title ?? key, viewMode)
+            )
+          }
+          className="bg-abakus-charcoal text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity"
+        >
+          Download Data
+        </button>
       )}
     </div>
   )

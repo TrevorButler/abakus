@@ -2,6 +2,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { formatValue, CATEGORY_COLORS, type ValueFormat } from '../../lib/chartMeta'
 import { ChartCardShell } from './LineChartCard'
 import type { LineChart as LineChartData } from '../../lib/api'
+import { downloadCSV, multiGeoSeriesRows } from '../../lib/download'
 
 interface Props {
   title: string
@@ -28,8 +29,10 @@ export default function MultiGeoLineChartCard({ title, format, geographies, char
     return row
   })
 
+  const seriesByGeoid = Object.fromEntries(geographies.map((g) => [g.geoid, charts[g.geoid]?.series ?? {}]))
+
   return (
-    <ChartCardShell title={title}>
+    <ChartCardShell title={title} onDownload={() => downloadCSV(`${title}.csv`, multiGeoSeriesRows(geographies, seriesByGeoid))}>
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e4e7" />

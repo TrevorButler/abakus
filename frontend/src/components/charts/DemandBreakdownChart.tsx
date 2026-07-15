@@ -2,6 +2,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { CATEGORY_COLORS, formatValue } from '../../lib/chartMeta'
 import { ChartCardShell } from './LineChartCard'
 import type { AgeIncomeCell } from '../../lib/api'
+import { downloadCSV, ageIncomeRows } from '../../lib/download'
 
 interface Props {
   title: string
@@ -29,7 +30,7 @@ export default function DemandBreakdownChart({ title, cells }: Props) {
   })
 
   return (
-    <ChartCardShell title={title}>
+    <ChartCardShell title={title} onDownload={() => downloadCSV(`${title}.csv`, ageIncomeRows(cells))}>
       <ResponsiveContainer width="100%" height={280}>
         <BarChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e4e7" />

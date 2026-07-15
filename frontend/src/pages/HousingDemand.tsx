@@ -14,6 +14,7 @@ import GeographyMap from '../components/GeographyMap'
 import LineChartCard from '../components/charts/LineChartCard'
 import DemandBreakdownChart from '../components/charts/DemandBreakdownChart'
 import { formatValue } from '../lib/chartMeta'
+import { downloadWorkbook, seriesRows, ageIncomeRows, type SheetData } from '../lib/download'
 
 const MIN_YEAR = 2010
 const MAX_YEAR = 2024
@@ -285,6 +286,31 @@ function ResultsPanel({ result }: { result: HousingDemandResult }) {
   const population = mergeActualProjected(result.population_actual, result.population_projected, result.base_year)
   const householdSize = mergeActualProjected(result.household_size_actual, result.household_size_projected, result.base_year)
 
+  function handleDownload() {
+    const summary: (string | number)[][] = [
+      ['Metric', 'Value'],
+      ['Base Year', result.base_year],
+      ['Target Year', result.target_year],
+      ['Population Growth Rate', result.population_rate],
+      ['Household Size Growth Rate', result.household_size_rate],
+      ['Turnover Rate', result.turnover_rate],
+      ['Net Household Change', result.net_household_change],
+      ['Total Demand', result.total_demand],
+      ['Annual Demand', result.annual_demand],
+    ]
+    const sheets: SheetData[] = [
+      { name: 'Summary', rows: summary },
+      { name: 'Population', rows: seriesRows('Population', population) },
+      { name: 'Household Size', rows: seriesRows('Household Size', householdSize) },
+      { name: 'Households', rows: seriesRows('Households', result.households) },
+      { name: 'Turnover Demand', rows: seriesRows('Turnover Demand', result.turnover_demand_by_year) },
+    ]
+    if (result.age_income_breakdown && result.age_income_breakdown.length > 0) {
+      sheets.push({ name: 'Demand by Age x Income', rows: ageIncomeRows(result.age_income_breakdown) })
+    }
+    downloadWorkbook('Housing Demand Projection.xlsx', sheets)
+  }
+
   return (
     <div className="flex flex-col gap-6 w-full">
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -309,6 +335,14 @@ function ResultsPanel({ result }: { result: HousingDemandResult }) {
           cells={result.age_income_breakdown}
         />
       )}
+
+      <button
+        type="button"
+        onClick={handleDownload}
+        className="bg-abakus-charcoal text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity self-center"
+      >
+        Download Data
+      </button>
     </div>
   )
 }

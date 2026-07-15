@@ -2,6 +2,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import { CATEGORY_COLORS, formatValue, type ChartViewMode } from '../../lib/chartMeta'
 import { ChartCardShell } from './LineChartCard'
 import type { StackedBarChart as StackedBarChartData } from '../../lib/api'
+import { downloadCSV, multiGeoCategoriesRows } from '../../lib/download'
 
 interface Props {
   title: string
@@ -58,8 +59,15 @@ export default function MultiGeoStackedBarChartCard({ title, geographies, charts
     )
   )
 
+  const categoriesByGeoid = Object.fromEntries(
+    geographies.map((g) => [g.geoid, (showCount ? charts[g.geoid]?.raw_categories : charts[g.geoid]?.categories) ?? {}])
+  )
+
   return (
-    <ChartCardShell title={title}>
+    <ChartCardShell
+      title={title}
+      onDownload={() => downloadCSV(`${title}.csv`, multiGeoCategoriesRows(geographies, categoriesByGeoid, years))}
+    >
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {geographies.map((g) => {
           const cats = showCount ? charts[g.geoid]?.raw_categories : charts[g.geoid]?.categories

@@ -1,6 +1,7 @@
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { CATEGORY_COLORS, formatValue, type ChartViewMode, type ValueFormat } from '../../lib/chartMeta'
 import { ChartCardShell } from './LineChartCard'
+import { downloadCSV, binRows } from '../../lib/download'
 
 interface Props {
   title: string
@@ -26,7 +27,7 @@ export default function BinBarChartCard({ title, format, categories, rawCategori
   const data = Object.entries(source[year]).map(([bin, value]) => ({ bin, value }))
 
   return (
-    <ChartCardShell title={title}>
+    <ChartCardShell title={title} onDownload={() => downloadCSV(`${title}.csv`, binRows(source))}>
       <p className="text-xs text-abakus-light-grey mb-1">{year}</p>
       <ResponsiveContainer width="100%" height={280}>
         <BarChart data={data} margin={{ top: 8, right: 16, bottom: 50, left: 0 }}>

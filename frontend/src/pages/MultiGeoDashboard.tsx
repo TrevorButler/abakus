@@ -4,6 +4,7 @@ import { CHART_META, type ChartViewMode } from '../lib/chartMeta'
 import MultiGeoLineChartCard from '../components/charts/MultiGeoLineChartCard'
 import MultiGeoStackedBarChartCard from '../components/charts/MultiGeoStackedBarChartCard'
 import MultiGeoBinBarChartCard from '../components/charts/MultiGeoBinBarChartCard'
+import { downloadWorkbook, multiGeoDashboardSheets } from '../lib/download'
 
 const MIN_YEAR = 2010
 const MAX_YEAR = 2024
@@ -112,6 +113,21 @@ export default function MultiGeoDashboard({ geographies }: Props) {
             )
           })}
         </div>
+      )}
+
+      {!loading && Object.keys(dataByGeoid).length > 0 && (
+        <button
+          type="button"
+          onClick={() =>
+            downloadWorkbook(
+              'Comparison.xlsx',
+              multiGeoDashboardSheets(geographies, dataByGeoid, chartNames, (key) => CHART_META[key]?.title ?? key, viewMode)
+            )
+          }
+          className="bg-abakus-charcoal text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity"
+        >
+          Download Data
+        </button>
       )}
     </div>
   )

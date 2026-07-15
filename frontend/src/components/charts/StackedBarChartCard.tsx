@@ -1,6 +1,7 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { CATEGORY_COLORS, formatValue, type ChartViewMode } from '../../lib/chartMeta'
 import { ChartCardShell } from './LineChartCard'
+import { downloadCSV, categoriesRows } from '../../lib/download'
 
 interface Props {
   title: string
@@ -26,7 +27,7 @@ export default function StackedBarChartCard({ title, categories, rawCategories, 
   const data = years.map((year) => ({ year, ...source[year] }))
 
   return (
-    <ChartCardShell title={title}>
+    <ChartCardShell title={title} onDownload={() => downloadCSV(`${title}.csv`, categoriesRows(source))}>
       <ResponsiveContainer width="100%" height={240}>
         <BarChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e4e7" />
