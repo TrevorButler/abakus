@@ -25,6 +25,7 @@ export interface LineChart {
 export interface StackedBarChart {
   chart_type: 'stacked_bar'
   categories: Record<string, Record<string, number>>
+  raw_categories: Record<string, Record<string, number>>
 }
 
 // Same shape as StackedBarChart, but each category is its own bar rather
@@ -33,6 +34,7 @@ export interface StackedBarChart {
 export interface BarChart {
   chart_type: 'bar'
   categories: Record<string, Record<string, number>>
+  raw_categories: Record<string, Record<string, number>>
 }
 
 export type ChartResult = LineChart | StackedBarChart | BarChart

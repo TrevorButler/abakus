@@ -6,6 +6,13 @@
 
 export type ValueFormat = 'count' | 'dollars' | 'years' | 'percent'
 
+// Global toggle for every stacked_bar/bar chart on a dashboard: 'percent'
+// shows each category's share (the API's `categories` field), 'count'
+// shows the underlying raw number (the API's `raw_categories` field).
+// Doesn't apply to line charts (population, medians, etc.) -- those are
+// already a single count/dollar/year value, not a share of something.
+export type ChartViewMode = 'percent' | 'count'
+
 export interface ChartMeta {
   title: string
   format: ValueFormat

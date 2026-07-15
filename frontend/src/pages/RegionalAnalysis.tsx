@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type GeoType, type DashboardResult } from '../lib/api'
-import { CHART_META } from '../lib/chartMeta'
+import { CHART_META, type ChartViewMode } from '../lib/chartMeta'
 import GeographyList from '../components/GeographyList'
 import GeographyMap from '../components/GeographyMap'
 import LineChartCard from '../components/charts/LineChartCard'
@@ -120,6 +120,7 @@ export default function RegionalAnalysis() {
 function AggregatedDashboard({ geoids, onBack }: { geoids: string[]; onBack: () => void }) {
   const [startYear, setStartYear] = useState(MIN_YEAR)
   const [endYear, setEndYear] = useState(MAX_YEAR)
+  const [viewMode, setViewMode] = useState<ChartViewMode>('percent')
   const [charts, setCharts] = useState<DashboardResult | null>(null)
   const [excluded, setExcluded] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -157,6 +158,14 @@ function AggregatedDashboard({ geoids, onBack }: { geoids: string[]; onBack: () 
           To
           <YearSelect value={endYear} onChange={setEndYear} min={startYear} />
         </label>
+        <ToggleGroup
+          value={viewMode}
+          onChange={(v) => setViewMode(v as ChartViewMode)}
+          options={[
+            { value: 'percent', label: '%' },
+            { value: 'count', label: '#' },
+          ]}
+        />
       </div>
 
       {excluded.length > 0 && (
@@ -177,9 +186,26 @@ function AggregatedDashboard({ geoids, onBack }: { geoids: string[]; onBack: () 
               return <LineChartCard key={key} title={meta.title} format={meta.format} series={chart.series} />
             }
             if (chart.chart_type === 'bar') {
-              return <BinBarChartCard key={key} title={meta.title} format={meta.format} categories={chart.categories} />
+              return (
+                <BinBarChartCard
+                  key={key}
+                  title={meta.title}
+                  format={meta.format}
+                  categories={chart.categories}
+                  rawCategories={chart.raw_categories}
+                  viewMode={viewMode}
+                />
+              )
             }
-            return <StackedBarChartCard key={key} title={meta.title} categories={chart.categories} />
+            return (
+              <StackedBarChartCard
+                key={key}
+                title={meta.title}
+                categories={chart.categories}
+                rawCategories={chart.raw_categories}
+                viewMode={viewMode}
+              />
+            )
           })}
         </div>
       )}

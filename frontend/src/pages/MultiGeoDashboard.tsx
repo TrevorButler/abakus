@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type BarChart, type DashboardResult, type LineChart, type StackedBarChart } from '../lib/api'
-import { CHART_META } from '../lib/chartMeta'
+import { CHART_META, type ChartViewMode } from '../lib/chartMeta'
 import MultiGeoLineChartCard from '../components/charts/MultiGeoLineChartCard'
 import MultiGeoStackedBarChartCard from '../components/charts/MultiGeoStackedBarChartCard'
 import MultiGeoBinBarChartCard from '../components/charts/MultiGeoBinBarChartCard'
@@ -18,6 +18,7 @@ interface Props {
 export default function MultiGeoDashboard({ geographies }: Props) {
   const [startYear, setStartYear] = useState(MIN_YEAR)
   const [endYear, setEndYear] = useState(MAX_YEAR)
+  const [viewMode, setViewMode] = useState<ChartViewMode>('percent')
   const [dataByGeoid, setDataByGeoid] = useState<Record<string, DashboardResult>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -51,6 +52,14 @@ export default function MultiGeoDashboard({ geographies }: Props) {
           To
           <YearSelect value={endYear} onChange={setEndYear} min={startYear} />
         </label>
+        <ToggleGroup
+          value={viewMode}
+          onChange={(v) => setViewMode(v as ChartViewMode)}
+          options={[
+            { value: 'percent', label: '%' },
+            { value: 'count', label: '#' },
+          ]}
+        />
       </div>
 
       <p className="text-xs text-abakus-light-grey text-center max-w-md">
@@ -82,7 +91,7 @@ export default function MultiGeoDashboard({ geographies }: Props) {
                 const c = dataByGeoid[g.geoid]?.[key]
                 if (c?.chart_type === 'bar') charts[g.geoid] = c
               })
-              return <MultiGeoBinBarChartCard key={key} title={meta.title} geographies={geographies} charts={charts} />
+              return <MultiGeoBinBarChartCard key={key} title={meta.title} geographies={geographies} charts={charts} viewMode={viewMode} />
             }
 
             const charts: Record<string, StackedBarChart> = {}
@@ -98,6 +107,7 @@ export default function MultiGeoDashboard({ geographies }: Props) {
                 charts={charts}
                 startYear={startYear}
                 endYear={endYear}
+                viewMode={viewMode}
               />
             )
           })}
@@ -118,5 +128,24 @@ function YearSelect({ value, onChange, min = MIN_YEAR, max = MAX_YEAR }: { value
         </option>
       ))}
     </select>
+  )
+}
+
+function ToggleGroup({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <div className="inline-flex rounded-lg border border-abakus-charcoal/15 overflow-hidden">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+            value === opt.value ? 'bg-abakus-charcoal text-white' : 'bg-white text-abakus-charcoal hover:bg-abakus-cream'
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
   )
 }

@@ -104,45 +104,60 @@ def category_breakdown(engine, geoid: str, table_id: str, numerator_codes: dict,
                         denominator_code: str, start_year: int, end_year: int,
                         most_recent_year_only: bool = False, chart_type: str = "stacked_bar") -> dict:
     """numerator_codes: {category_label: variable_code}. Returns
-    {chart_type: chart_type, categories: {year: {category_label: percent}}}.
-    chart_type is "stacked_bar" (one 100% bar per year, the common case) or
-    "bar" (one bar per category, no stacking or normalization across
-    categories -- used for Year Built / Year Moved In, where the bins are
-    themselves the thing being compared, not slices of a whole)."""
+    {chart_type: chart_type, categories: {year: {category_label: percent}},
+    raw_categories: {year: {category_label: count}}} -- raw_categories is
+    the pre-division numerator, kept alongside the percentage so the
+    frontend's %/# toggle doesn't need a second request. chart_type is
+    "stacked_bar" (one 100% bar per year, the common case) or "bar" (one
+    bar per category, no stacking or normalization across categories --
+    used for Year Built / Year Moved In, where the bins are themselves the
+    thing being compared, not slices of a whole)."""
     all_codes = list(numerator_codes.values()) + [denominator_code]
     data = fetch_multi(engine, geoid, table_id, all_codes, start_year, end_year)
 
     categories = {}
+    raw_categories = {}
     for year, values in data.items():
         denom = values.get(denominator_code)
         if not denom:
             continue
         year_result = {}
+        year_raw = {}
         for label, code in numerator_codes.items():
             if code in values:
                 year_result[label] = values[code] / denom
+                year_raw[label] = values[code]
         if year_result:
             categories[year] = year_result
+            raw_categories[year] = year_raw
 
     if most_recent_year_only and categories:
         latest = max(categories)
         categories = {latest: categories[latest]}
+        raw_categories = {latest: raw_categories[latest]}
 
-    return {"chart_type": chart_type, "categories": categories}
+    return {"chart_type": chart_type, "categories": categories, "raw_categories": raw_categories}
 
 
 def regroup_categories(breakdown: dict, group_map: dict) -> dict:
-    """Consolidates a category_breakdown() result's categories into coarser
-    groups by summing, e.g. 13 age bins -> 4 simplified age groups.
-    group_map: {new_group_label: [original_category_labels]}."""
-    regrouped = {}
-    for year, cats in breakdown["categories"].items():
-        year_result = {}
-        for group_label, original_labels in group_map.items():
-            total = sum(cats.get(label, 0.0) for label in original_labels)
-            year_result[group_label] = total
-        regrouped[year] = year_result
-    return {"chart_type": "stacked_bar", "categories": regrouped}
+    """Consolidates a category_breakdown()-shaped result's categories (and
+    raw_categories, if present) into coarser groups by summing, e.g. 13 age
+    bins -> 4 simplified age groups. group_map: {new_group_label:
+    [original_category_labels]}."""
+    def regroup(source: dict) -> dict:
+        result = {}
+        for year, cats in source.items():
+            result[year] = {
+                group_label: sum(cats.get(label, 0.0) for label in original_labels)
+                for group_label, original_labels in group_map.items()
+            }
+        return result
+
+    return {
+        "chart_type": breakdown.get("chart_type", "stacked_bar"),
+        "categories": regroup(breakdown["categories"]),
+        "raw_categories": regroup(breakdown.get("raw_categories", {})),
+    }
 
 
 # ============================================================
@@ -233,13 +248,15 @@ def _find_dp04(year_values: dict, starts_with: str = None, ends_with: str = None
 def tenure(engine, geoid, start_year, end_year):
     data = _fetch_dp04_by_label(engine, geoid, start_year, end_year)
     categories = {}
+    raw_categories = {}
     for year, values in data.items():
         denom = _find_dp04(values, starts_with="HOUSING TENURE", ends_with="Occupied housing units")
         owner = _find_dp04(values, ends_with="Owner-occupied")
         renter = _find_dp04(values, ends_with="Renter-occupied")
         if denom and owner is not None and renter is not None:
             categories[year] = {"Owner-occupied": owner / denom, "Renter-occupied": renter / denom}
-    return {"chart_type": "stacked_bar", "categories": categories}
+            raw_categories[year] = {"Owner-occupied": owner, "Renter-occupied": renter}
+    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
 
 
 def median_home_value(engine, geoid, start_year, end_year):
@@ -272,18 +289,22 @@ def owner_cost_burden(engine, geoid, start_year, end_year):
     header = "SELECTED MONTHLY OWNER COSTS AS A PERCENTAGE OF HOUSEHOLD INCOME (SMOCAPI)!!Housing units with a mortgage"
     data = _fetch_dp04_by_label(engine, geoid, start_year, end_year)
     categories = {}
+    raw_categories = {}
     for year, values in data.items():
         denom = _find_dp04(values, starts_with=header, ends_with="excluding units where SMOCAPI cannot be computed)")
         if not denom:
             continue
         year_result = {}
+        year_raw = {}
         for label in bins:
             v = _find_dp04(values, starts_with=header, ends_with=label)
             if v is not None:
                 year_result[label] = v / denom
+                year_raw[label] = v
         if year_result:
             categories[year] = year_result
-    return {"chart_type": "stacked_bar", "categories": categories}
+            raw_categories[year] = year_raw
+    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
 
 
 def renter_cost_burden(engine, geoid, start_year, end_year):
@@ -292,18 +313,22 @@ def renter_cost_burden(engine, geoid, start_year, end_year):
     header = "GROSS RENT AS A PERCENTAGE OF HOUSEHOLD INCOME (GRAPI)"
     data = _fetch_dp04_by_label(engine, geoid, start_year, end_year)
     categories = {}
+    raw_categories = {}
     for year, values in data.items():
         denom = _find_dp04(values, starts_with=header, ends_with="excluding units where GRAPI cannot be computed)")
         if not denom:
             continue
         year_result = {}
+        year_raw = {}
         for label in bins:
             v = _find_dp04(values, starts_with=header, ends_with=label)
             if v is not None:
                 year_result[label] = v / denom
+                year_raw[label] = v
         if year_result:
             categories[year] = year_result
-    return {"chart_type": "stacked_bar", "categories": categories}
+            raw_categories[year] = year_raw
+    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
 
 
 def housing_unit_occupancy(engine, geoid, start_year, end_year):
@@ -433,18 +458,22 @@ def _dp05_category_breakdown(engine, geoid, numerator_labels: dict, denominator_
     data = _fetch_dp05_by_label(engine, geoid, start_year, end_year)
     denominator_key = denominator_label.lower()
     categories = {}
+    raw_categories = {}
     for year, values in data.items():
         denom = values.get(denominator_key)
         if not denom:
             continue
         year_result = {}
+        year_raw = {}
         for label, key in numerator_labels.items():
             key = key.lower()
             if key in values:
                 year_result[label] = values[key] / denom
+                year_raw[label] = values[key]
         if year_result:
             categories[year] = year_result
-    return {"chart_type": "stacked_bar", "categories": categories}
+            raw_categories[year] = year_raw
+    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
 
 
 def population(engine, geoid, start_year, end_year):
@@ -511,17 +540,36 @@ HOUSEHOLD_INCOME_CODES = {
 }
 
 
+TOTAL_HOUSEHOLDS_CODE = "S1901_C01_001"
+
+
 def household_income(engine, geoid, start_year, end_year):
     # S1901's income-bin variables are already percentages (e.g. 4.3 means
     # 4.3%), unlike every other category_breakdown() table here -- dividing
-    # by S1901_C01_001 (Total households, a raw count) would be wrong.
-    data = fetch_multi(engine, geoid, "S1901", list(HOUSEHOLD_INCOME_CODES.values()), start_year, end_year)
+    # by S1901_C01_001 (Total households, a raw count) would be wrong. For
+    # the same reason, raw_categories here is a DERIVED count (percent x
+    # total households) rather than a directly reported figure, unlike
+    # every other chart's raw_categories.
+    codes = list(HOUSEHOLD_INCOME_CODES.values()) + [TOTAL_HOUSEHOLDS_CODE]
+    data = fetch_multi(engine, geoid, "S1901", codes, start_year, end_year)
     categories = {}
+    raw_categories = {}
     for year, values in data.items():
-        year_result = {label: values[code] / 100.0 for label, code in HOUSEHOLD_INCOME_CODES.items() if code in values}
+        total = values.get(TOTAL_HOUSEHOLDS_CODE)
+        year_result = {}
+        year_raw = {}
+        for label, code in HOUSEHOLD_INCOME_CODES.items():
+            if code not in values:
+                continue
+            pct = values[code] / 100.0
+            year_result[label] = pct
+            if total:
+                year_raw[label] = pct * total
         if year_result:
             categories[year] = year_result
-    return {"chart_type": "stacked_bar", "categories": categories}
+        if year_raw:
+            raw_categories[year] = year_raw
+    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
 
 
 def household_income_simplified(engine, geoid, start_year, end_year):
@@ -557,15 +605,18 @@ def _tenure_section_breakdown(engine, geoid, table_id, denom_code, codes, start_
     data = fetch_multi(engine, geoid, table_id, all_codes, start_year, end_year)
 
     categories = {}
+    raw_categories = {}
     for year, values in data.items():
         denom = values.get(denom_code)
         if not denom:
             continue
         year_result = {label: values[code] / denom for label, code in codes.items() if code in values}
+        year_raw = {label: values[code] for label, code in codes.items() if code in values}
         if year_result:
             categories[year] = year_result
+            raw_categories[year] = year_raw
 
-    return {"chart_type": "stacked_bar", "categories": categories}
+    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
 
 
 TENURE_BY_AGE_OWNER_CODES = {
@@ -625,23 +676,28 @@ def _s2501_breakdown(engine, geoid, numerator_codes: dict, start_year, end_year)
     data = fetch_multi(engine, geoid, "S2501", all_codes, start_year, end_year)
 
     categories = {}
+    raw_categories = {}
     for year, values in data.items():
         occupied = values.get(occupied_code)
         if not occupied:
             continue
         year_result = {}
+        year_raw = {}
         for label, code in numerator_codes.items():
             if code not in values:
                 continue
             raw = values[code]
             if year >= S2501_FORMAT_CHANGE_YEAR:
                 year_result[label] = raw / occupied  # raw is a count
+                year_raw[label] = raw
             else:
                 year_result[label] = raw / 100.0  # raw is already a percent (e.g. 37.2 = 37.2%)
+                year_raw[label] = (raw / 100.0) * occupied  # DERIVED -- source has no count pre-2017
         if year_result:
             categories[year] = year_result
+            raw_categories[year] = year_raw
 
-    return {"chart_type": "stacked_bar", "categories": categories}
+    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
 
 
 def household_size(engine, geoid, start_year, end_year):

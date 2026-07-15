@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, type DashboardResult, type GeographySummary, type GeoType } from '../lib/api'
-import { CHART_META } from '../lib/chartMeta'
+import { CHART_META, type ChartViewMode } from '../lib/chartMeta'
 import LineChartCard from '../components/charts/LineChartCard'
 import StackedBarChartCard from '../components/charts/StackedBarChartCard'
 import BinBarChartCard from '../components/charts/BinBarChartCard'
@@ -14,6 +14,7 @@ export default function Dashboard() {
   const [geo, setGeo] = useState<(GeographySummary & { geo_type: GeoType }) | null>(null)
   const [startYear, setStartYear] = useState(MIN_YEAR)
   const [endYear, setEndYear] = useState(MAX_YEAR)
+  const [viewMode, setViewMode] = useState<ChartViewMode>('percent')
   const [dashboard, setDashboard] = useState<DashboardResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -54,6 +55,14 @@ export default function Dashboard() {
           To
           <YearSelect value={endYear} onChange={setEndYear} min={startYear} />
         </label>
+        <ToggleGroup
+          value={viewMode}
+          onChange={(v) => setViewMode(v as ChartViewMode)}
+          options={[
+            { value: 'percent', label: '%' },
+            { value: 'count', label: '#' },
+          ]}
+        />
       </div>
 
       {error && <p className="text-abakus-warm-400">{error}</p>}
@@ -67,12 +76,48 @@ export default function Dashboard() {
               return <LineChartCard key={key} title={meta.title} format={meta.format} series={chart.series} />
             }
             if (chart.chart_type === 'bar') {
-              return <BinBarChartCard key={key} title={meta.title} format={meta.format} categories={chart.categories} />
+              return (
+                <BinBarChartCard
+                  key={key}
+                  title={meta.title}
+                  format={meta.format}
+                  categories={chart.categories}
+                  rawCategories={chart.raw_categories}
+                  viewMode={viewMode}
+                />
+              )
             }
-            return <StackedBarChartCard key={key} title={meta.title} categories={chart.categories} />
+            return (
+              <StackedBarChartCard
+                key={key}
+                title={meta.title}
+                categories={chart.categories}
+                rawCategories={chart.raw_categories}
+                viewMode={viewMode}
+              />
+            )
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+function ToggleGroup({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <div className="inline-flex rounded-lg border border-abakus-charcoal/15 overflow-hidden">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+            value === opt.value ? 'bg-abakus-charcoal text-white' : 'bg-white text-abakus-charcoal hover:bg-abakus-cream'
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
     </div>
   )
 }

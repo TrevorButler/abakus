@@ -1,14 +1,19 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { CATEGORY_COLORS, formatValue } from '../../lib/chartMeta'
+import { CATEGORY_COLORS, formatValue, type ChartViewMode } from '../../lib/chartMeta'
 import { ChartCardShell } from './LineChartCard'
 
 interface Props {
   title: string
   categories: Record<string, Record<string, number>>
+  rawCategories?: Record<string, Record<string, number>>
+  viewMode?: ChartViewMode
 }
 
-export default function StackedBarChartCard({ title, categories }: Props) {
-  const years = Object.keys(categories).sort()
+export default function StackedBarChartCard({ title, categories, rawCategories, viewMode = 'percent' }: Props) {
+  const showCount = viewMode === 'count' && rawCategories
+  const source = showCount ? rawCategories! : categories
+  const format = showCount ? 'count' : 'percent'
+  const years = Object.keys(source).sort()
   if (years.length === 0) {
     return <ChartCardShell title={title}>No data for this range.</ChartCardShell>
   }
@@ -16,9 +21,9 @@ export default function StackedBarChartCard({ title, categories }: Props) {
   // Category set can vary in name/order across years (e.g. a bin with no
   // data in one year) -- union them so every year gets every bar segment,
   // in a stable order.
-  const categoryNames = Array.from(new Set(years.flatMap((y) => Object.keys(categories[y]))))
+  const categoryNames = Array.from(new Set(years.flatMap((y) => Object.keys(source[y]))))
 
-  const data = years.map((year) => ({ year, ...categories[year] }))
+  const data = years.map((year) => ({ year, ...source[year] }))
 
   return (
     <ChartCardShell title={title}>
@@ -28,12 +33,12 @@ export default function StackedBarChartCard({ title, categories }: Props) {
           <XAxis dataKey="year" tick={{ fontSize: 12 }} />
           <YAxis
             tick={{ fontSize: 12 }}
-            tickFormatter={(v) => formatValue(v, 'percent')}
-            width={50}
-            domain={[0, 1]}
-            ticks={[0, 0.25, 0.5, 0.75, 1]}
+            tickFormatter={(v) => formatValue(v, format)}
+            width={showCount ? 60 : 50}
+            domain={showCount ? undefined : [0, 1]}
+            ticks={showCount ? undefined : [0, 0.25, 0.5, 0.75, 1]}
           />
-          <Tooltip formatter={(v: number) => formatValue(v, 'percent')} />
+          <Tooltip formatter={(v: number) => formatValue(v, format)} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           {categoryNames.map((name, i) => (
             <Bar key={name} dataKey={name} stackId="a" fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
