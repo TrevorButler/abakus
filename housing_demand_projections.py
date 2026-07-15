@@ -123,7 +123,7 @@ def project_population_and_households(engine, geoid: str, base_year: int, target
     population = project_forward(pop_series[base_year], pop_rate, base_year, target_year)
     hh_size = project_forward(hh_size_series[base_year], hh_size_rate, base_year, target_year)
 
-    households = {}
+    households = {y: v for y, v in actual_households.items() if y < base_year}
     for y in range(base_year, target_year + 1):
         if y in actual_households:
             households[y] = actual_households[y]
