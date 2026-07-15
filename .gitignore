@@ -11,13 +11,12 @@ venv/
 .env
 .env.local
 
-# Large source/generated geospatial data -- regenerable via
-# build_geo_assets.py against Clean Shapefiles/, not hand-edited.
-# Clean Shapefiles/ itself (~90MB of raw TIGER shapefiles) is also
-# excluded; source it from wherever it was originally provided if a
-# fresh clone needs to regenerate geo_assets/.
+# Raw source shapefiles (~90MB of TIGER data) -- not needed at runtime,
+# only to regenerate geo_assets/ via build_geo_assets.py. geo_assets/
+# itself (the simplified GeoJSON actually served to the map) IS tracked --
+# at ~10MB it's small enough to commit, and deployed environments need it
+# without also needing these raw shapefiles.
 Clean Shapefiles/
-geo_assets/
 
 # Frontend (added once scaffolded)
 node_modules/

@@ -11,6 +11,7 @@ deployment config. Run with:
 Interactive docs at http://127.0.0.1:8000/docs once running.
 """
 
+import os
 from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -24,11 +25,16 @@ import housing_demand_projections as hdp
 
 app = FastAPI(title="Abakus API", version="0.1.0")
 
-# Wide open for local development -- tighten to the actual frontend origin
-# once one exists and this moves toward deployment.
+# Wide open (["*"]) when FRONTEND_ORIGIN is unset, which is the local-dev
+# default -- set it (comma-separated for more than one, e.g. a Render
+# preview URL plus the production URL) once a real deployed frontend
+# origin exists, to stop accepting requests from anywhere.
+_frontend_origin = os.environ.get("FRONTEND_ORIGIN")
+_allow_origins = [o.strip() for o in _frontend_origin.split(",")] if _frontend_origin else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -39,7 +39,7 @@ export default function StackedBarChartCard({ title, categories, rawCategories, 
             domain={showCount ? undefined : [0, 1]}
             ticks={showCount ? undefined : [0, 0.25, 0.5, 0.75, 1]}
           />
-          <Tooltip formatter={(v: number) => formatValue(v, format)} />
+          <Tooltip formatter={(v) => formatValue(Number(v), format)} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           {categoryNames.map((name, i) => (
             <Bar key={name} dataKey={name} stackId="a" fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />

@@ -25,7 +25,7 @@ export default function LineChartCard({ title, format, series }: Props) {
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e4e7" />
           <XAxis dataKey="year" tick={{ fontSize: 12 }} />
           <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => formatValue(v, format)} width={70} />
-          <Tooltip formatter={(v: number) => formatValue(v, format)} labelFormatter={(y) => `${y}`} />
+          <Tooltip formatter={(v) => formatValue(Number(v), format)} labelFormatter={(y) => `${y}`} />
           <Line type="monotone" dataKey="value" stroke="#36bfee" strokeWidth={2} dot={{ r: 3 }} />
         </LineChart>
       </ResponsiveContainer>

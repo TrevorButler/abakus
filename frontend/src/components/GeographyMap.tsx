@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import maplibregl, { Map as MapLibreMap } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import type { GeoType } from '../lib/api'
+import { mapAssetUrl, type GeoType } from '../lib/api'
 
 interface Props {
   geoType: GeoType
@@ -45,7 +45,7 @@ export default function GeographyMap({ geoType, selectedGeoids, onToggle }: Prop
     map.on('load', () => {
       map.addSource(SOURCE_ID, {
         type: 'geojson',
-        data: geoType === 'place' ? '/map-assets/places.geojson' : '/map-assets/counties.geojson',
+        data: mapAssetUrl(geoType === 'place' ? 'places.geojson' : 'counties.geojson'),
       })
       map.addLayer({
         id: FILL_LAYER,

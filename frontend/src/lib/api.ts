@@ -116,8 +116,24 @@ export interface HousingDemandParams {
   b19037_demand_basis: DemandBasis
 }
 
+// In local dev, this stays "/api" and Vite's proxy (see vite.config.ts)
+// rewrites it to the backend. In production the frontend and backend are
+// separate deployed services with different origins, so VITE_API_URL (set
+// at build time in the hosting platform's env vars) points straight at the
+// backend's real URL instead.
+const API_BASE = (import.meta.env.VITE_API_URL ?? '/api').replace(/\/$/, '')
+
+// GeographyMap loads static GeoJSON from the backend's /assets mount, not
+// through the /api-prefixed JSON endpoints above -- same dev-vs-prod split
+// as API_BASE (dev proxies /map-assets -> backend /assets; prod has no
+// proxy at runtime, so it needs the backend's real origin directly).
+export function mapAssetUrl(filename: string): string {
+  const base = import.meta.env.VITE_API_URL
+  return base ? `${base.replace(/\/$/, '')}/assets/${filename}` : `/map-assets/${filename}`
+}
+
 async function get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
-  const url = new URL(`/api${path}`, window.location.origin)
+  const url = new URL(`${API_BASE}${path}`, window.location.origin)
   if (params) {
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined) url.searchParams.set(key, String(value))

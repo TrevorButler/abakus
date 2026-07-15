@@ -86,7 +86,7 @@ export default function MultiGeoStackedBarChartCard({ title, geographies, charts
                   <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
                     <XAxis dataKey="year" tick={{ fontSize: 10 }} />
                     <YAxis hide domain={showCount ? undefined : [0, 1]} />
-                    <Tooltip formatter={(v: number) => formatValue(v, format)} />
+                    <Tooltip formatter={(v) => formatValue(Number(v), format)} />
                     {categoryNames.map((name, i) => (
                       <Bar key={name} dataKey={name} stackId="a" fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
                     ))}

@@ -40,7 +40,7 @@ export default function BinBarChartCard({ title, format, categories, rawCategori
             domain={activeFormat === 'percent' ? [0, 1] : undefined}
             ticks={activeFormat === 'percent' ? [0, 0.25, 0.5, 0.75, 1] : undefined}
           />
-          <Tooltip formatter={(v: number) => formatValue(v, activeFormat)} />
+          <Tooltip formatter={(v) => formatValue(Number(v), activeFormat)} />
           <Bar dataKey="value">
             {data.map((_, i) => (
               <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />

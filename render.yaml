@@ -1,0 +1,37 @@
+# Render Blueprint -- lets Render provision the backend web service and
+# frontend static site together from one file (Postgres is created
+# separately in the dashboard, per the deployment plan, since Blueprint
+# databases don't support picking your own storage size/plan tier).
+#
+# Values marked `sync: false` are secrets/environment-specific and must be
+# set by hand in the Render dashboard after the first deploy -- they're
+# deliberately not stored here (this file is committed to git).
+services:
+  - type: web
+    name: abakus-backend
+    runtime: python
+    plan: starter
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn api:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CENSUS_API_KEY
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+
+  - type: web
+    name: abakus-frontend
+    runtime: static
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      # SPA fallback -- client-side routing (react-router) needs every path
+      # to resolve to index.html, not a 404, so the router can take over.
+      - type: rewrite
+        source: /*
+        destination: /index.html

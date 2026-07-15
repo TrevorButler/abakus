@@ -36,7 +36,7 @@ export default function DemandBreakdownChart({ title, cells }: Props) {
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e4e7" />
           <XAxis dataKey="age_group" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => formatValue(v, 'count')} width={60} />
-          <Tooltip formatter={(v: number) => formatValue(v, 'count')} />
+          <Tooltip formatter={(v) => formatValue(Number(v), 'count')} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
           {incomeBins.map((bin, i) => (
             <Bar key={bin} dataKey={bin} stackId="a" fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />

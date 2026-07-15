@@ -44,7 +44,7 @@ export default function MultiGeoBinBarChartCard({ title, geographies, charts, vi
                   <BarChart data={data} margin={{ top: 4, right: 4, bottom: 30, left: 4 }}>
                     <XAxis dataKey="bin" tick={{ fontSize: 8 }} angle={-40} textAnchor="end" interval={0} height={50} />
                     <YAxis hide domain={showCount ? undefined : [0, 1]} />
-                    <Tooltip formatter={(v: number) => formatValue(v, format)} />
+                    <Tooltip formatter={(v) => formatValue(Number(v), format)} />
                     <Bar dataKey="value">
                       {data.map((_, i) => (
                         <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
