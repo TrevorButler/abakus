@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, type GeoType, type GeographySummary, type ComparativeMatch } from '../lib/api'
+import { api, type GeoType, type GeographySummary, type ComparativeMatch, type StateOption } from '../lib/api'
 import GeographyList from '../components/GeographyList'
 import MultiGeoDashboard from './MultiGeoDashboard'
 
@@ -11,9 +11,16 @@ export default function ComparativeAnalysis() {
   const [geoType, setGeoType] = useState<GeoType>('place')
   const [primaryGeoid, setPrimaryGeoid] = useState<string | null>(null)
   const [primaryGeo, setPrimaryGeo] = useState<GeographySummary | null>(null)
+  const [states, setStates] = useState<StateOption[]>([])
+  const [suggestionState, setSuggestionState] = useState('')
   const [suggestions, setSuggestions] = useState<ComparativeMatch[]>([])
   const [comparisonGeoids, setComparisonGeoids] = useState<string[]>([])
+  const [geoLabels, setGeoLabels] = useState<Record<string, string>>({})
   const [showDashboard, setShowDashboard] = useState(false)
+
+  useEffect(() => {
+    api.listStates().then(setStates).catch(() => setStates([]))
+  }, [])
 
   useEffect(() => {
     if (!primaryGeoid) {
@@ -25,6 +32,8 @@ export default function ComparativeAnalysis() {
 
   // Suggested top-5 most similar communities pre-populate the comparison
   // set (per the UX outline), which the user can then adjust below.
+  // suggestionState scopes the candidate pool to one state, or leaves it
+  // open to the full 7-state region when empty.
   useEffect(() => {
     if (!primaryGeoid) {
       setSuggestions([])
@@ -32,13 +41,26 @@ export default function ComparativeAnalysis() {
       return
     }
     api
-      .getComparativeCommunities(primaryGeoid, { year: SUGGESTION_YEAR, top_n: 5 })
+      .getComparativeCommunities(primaryGeoid, { year: SUGGESTION_YEAR, top_n: 5, state_filter: suggestionState || undefined })
       .then((res) => {
         setSuggestions(res.results)
         setComparisonGeoids(res.results.map((r) => r.geoid))
       })
       .catch(() => setSuggestions([]))
-  }, [primaryGeoid])
+  }, [primaryGeoid, suggestionState])
+
+  // Suggested geographies already carry their own display_name; anything
+  // added via the free-search list below doesn't, so its label has to be
+  // fetched separately -- otherwise the dashboard header/legend falls back
+  // to showing a bare geoid for those.
+  useEffect(() => {
+    const known = new Set(suggestions.map((s) => s.geoid))
+    const missing = comparisonGeoids.filter((g) => !known.has(g) && !(g in geoLabels))
+    if (missing.length === 0) return
+    Promise.all(
+      missing.map((g) => api.getGeography(g).then((geo) => [g, geo.display_name] as const).catch(() => [g, g] as const))
+    ).then((pairs) => setGeoLabels((prev) => ({ ...prev, ...Object.fromEntries(pairs) })))
+  }, [comparisonGeoids, suggestions, geoLabels])
 
   function toggleComparison(geoid: string) {
     setComparisonGeoids((prev) =>
@@ -53,7 +75,7 @@ export default function ComparativeAnalysis() {
         .filter((g) => g !== primaryGeo.geoid)
         .map((geoid) => {
           const match = suggestions.find((s) => s.geoid === geoid)
-          return { geoid, label: match?.display_name ?? geoid }
+          return { geoid, label: match?.display_name ?? geoLabels[geoid] ?? geoid }
         }),
     ]
     return (
@@ -102,10 +124,29 @@ export default function ComparativeAnalysis() {
       {primaryGeo && (
         <div className="w-full max-w-lg flex flex-col gap-4">
           <div>
-            <p className="text-sm text-abakus-light-grey mb-2 text-center">
-              Comparison geographies ({comparisonGeoids.length}/{MAX_COMPARISONS}) -- suggested most similar to{' '}
-              {primaryGeo.display_name} are pre-selected
-            </p>
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <p className="text-sm text-abakus-light-grey text-center">
+                Comparison geographies ({comparisonGeoids.length}/{MAX_COMPARISONS}) -- suggested most similar to{' '}
+                {primaryGeo.display_name} are pre-selected
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2 mb-2 text-sm">
+              <label className="flex items-center gap-2 text-abakus-light-grey">
+                Suggest from
+                <select
+                  value={suggestionState}
+                  onChange={(e) => setSuggestionState(e.target.value)}
+                  className="border border-abakus-charcoal/20 rounded-lg px-2 py-1 bg-white text-abakus-charcoal"
+                >
+                  <option value="">All states</option>
+                  {states.map((s) => (
+                    <option key={s.state_abbr} value={s.state_abbr}>
+                      {s.state_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <ul className="border border-abakus-charcoal/10 rounded-lg bg-white divide-y divide-abakus-charcoal/5">
               {suggestions.map((s) => (
                 <li key={s.geoid}>

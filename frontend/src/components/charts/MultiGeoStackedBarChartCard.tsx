@@ -12,12 +12,43 @@ interface Props {
   viewMode?: ChartViewMode
 }
 
+// Some charts (e.g. Owner Cost Burden) have no resolvable data for the
+// earliest few requested years -- a handful of DP04 sections had genuinely
+// ambiguous labels in 2010-2012 (see demographics_dashboard.py) that leave
+// those years unrecoverable. If the exact requested year is missing across
+// every geography, fall back to the nearest year that actually has data
+// (searching forward from a start year, backward from an end year) rather
+// than silently showing nothing -- the X axis's own tick label then makes
+// the substitution visible without needing separate UI for it.
+function resolveYear(
+  requestedYear: number,
+  geographies: { geoid: string }[],
+  charts: Record<string, StackedBarChartData>,
+  direction: 'forward' | 'backward'
+): number {
+  const requested = String(requestedYear)
+  if (geographies.some((g) => charts[g.geoid]?.categories[requested])) return requestedYear
+
+  const allYears = new Set<number>()
+  geographies.forEach((g) => Object.keys(charts[g.geoid]?.categories ?? {}).forEach((y) => allYears.add(Number(y))))
+  const sorted = Array.from(allYears).sort((a, b) => a - b)
+
+  if (direction === 'forward') {
+    const candidates = sorted.filter((y) => y >= requestedYear)
+    return candidates.length > 0 ? candidates[0] : requestedYear
+  }
+  const candidates = sorted.filter((y) => y <= requestedYear)
+  return candidates.length > 0 ? candidates[candidates.length - 1] : requestedYear
+}
+
 // Per the UX outline: with up to 6 geographies and several categories each,
 // showing every year would be unreadable, so comparative mode restricts
 // category breakdowns to the two endpoint years -- rendered as one small
 // stacked-bar chart per geography rather than one giant combined chart.
 export default function MultiGeoStackedBarChartCard({ title, geographies, charts, startYear, endYear, viewMode = 'percent' }: Props) {
-  const years = [String(startYear), String(endYear)].filter((y, i, arr) => arr.indexOf(y) === i)
+  const resolvedStartYear = resolveYear(startYear, geographies, charts, 'forward')
+  const resolvedEndYear = resolveYear(endYear, geographies, charts, 'backward')
+  const years = [String(resolvedStartYear), String(resolvedEndYear)].filter((y, i, arr) => arr.indexOf(y) === i)
   const showCount = viewMode === 'count'
   const format = showCount ? 'count' : 'percent'
 
