@@ -105,6 +105,30 @@ def get_neighbors(geoid: str, radius_miles: float = Query(40.0, le=40.0)):
 # Demographics Dashboard
 # ============================================================
 
+# NB: registered before /dashboard/{geoid} -- FastAPI matches routes in
+# registration order, and both patterns match a single path segment after
+# /dashboard/, so /dashboard/region would otherwise be swallowed by the
+# {geoid} route (with "region" treated as a literal geoid, 404ing).
+@app.get("/dashboard/region")
+def get_dashboard_region(
+    geoids: str = Query(..., description="Comma-separated geoids to aggregate"),
+    start_year: int = Query(2010, ge=2010, le=2024),
+    end_year: int = Query(2024, ge=2010, le=2024),
+):
+    """Regional Analysis 'Aggregated' view: counts and category breakdowns
+    summed across geoids; true medians omitted (see REGION_EXCLUDED_CHARTS --
+    they can't be validly derived from constituent medians)."""
+    geoid_list = [g.strip() for g in geoids.split(",") if g.strip()]
+    if not geoid_list:
+        raise HTTPException(status_code=400, detail="geoids must contain at least one geoid")
+    if start_year > end_year:
+        raise HTTPException(status_code=400, detail="start_year must be <= end_year")
+    for g in geoid_list:
+        _require_geography(g)
+    result = dd.get_full_dashboard_region(geoid_list, start_year, end_year, engine=engine)
+    return {"excluded_charts": sorted(dd.REGION_EXCLUDED_CHARTS), "charts": result}
+
+
 @app.get("/dashboard/{geoid}")
 def get_dashboard(
     geoid: str,

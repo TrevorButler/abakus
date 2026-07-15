@@ -1,9 +1,25 @@
 @import "tailwindcss";
 
-/* Palette and type from abakus_visualguide.pdf. Neue Haas Grotesk Display
-   is a licensed font (not bundled here) -- falls back to a comparable
-   system grotesque until the actual font files are added under
-   src/assets/fonts/ and declared with @font-face. */
+/* Neue Haas Grotesk Display, weights 55 (roman) and 56 (italic) per
+   abakus_visualguide.pdf -- the guide specifies only these two weights
+   deliberately (no bold/medium), so font-weight utilities beyond normal
+   render as browser-synthesized bold on top of Roman rather than a
+   dedicated face, matching the guide's minimal-weight intent. */
+@font-face {
+  font-family: "Neue Haas Grotesk Display";
+  src: url("./assets/fonts/NeueHaasDisplayRoman.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Neue Haas Grotesk Display";
+  src: url("./assets/fonts/NeueHaasDisplayRomanItalic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
 @theme {
   --font-sans: "Neue Haas Grotesk Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
 

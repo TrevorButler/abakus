@@ -30,6 +30,32 @@ export interface StackedBarChart {
 export type ChartResult = LineChart | StackedBarChart
 export type DashboardResult = Record<string, ChartResult>
 
+export interface ComparativeMatch {
+  rank: number
+  geoid: string
+  display_name: string
+  state_abbr: string
+  housing_units: number
+  households: number
+  median_income: number
+  ssd: number
+}
+
+export interface ComparativeResult {
+  subject: {
+    geoid: string
+    display_name: string
+    geo_type: GeoType
+    housing_units: number | null
+    households: number | null
+    median_income: number | null
+  }
+  year: number
+  state_filter: string[] | null
+  candidate_pool_size: number
+  results: ComparativeMatch[]
+}
+
 async function get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
   const url = new URL(`/api${path}`, window.location.origin)
   if (params) {
@@ -55,4 +81,10 @@ export const api = {
 
   getDashboard: (geoid: string, params: { start_year: number; end_year: number; charts?: string }) =>
     get<DashboardResult>(`/dashboard/${geoid}`, params),
+
+  getComparativeCommunities: (geoid: string, params: { year: number; state_filter?: string; top_n?: number }) =>
+    get<ComparativeResult>(`/comparative-communities/${geoid}`, params),
+
+  getDashboardRegion: (geoids: string[], params: { start_year: number; end_year: number }) =>
+    get<{ excluded_charts: string[]; charts: DashboardResult }>('/dashboard/region', { ...params, geoids: geoids.join(',') }),
 }

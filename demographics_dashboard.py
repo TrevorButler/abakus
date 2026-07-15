@@ -54,17 +54,34 @@ def get_engine():
     return create_engine(DATABASE_URL)
 
 
-def fetch_multi(engine, geoid: str, table_id: str, variable_codes: list, start_year: int, end_year: int) -> dict:
-    """Returns {year: {variable_code: value}}."""
+def fetch_multi(engine, geoid, table_id: str, variable_codes: list, start_year: int, end_year: int) -> dict:
+    """Returns {year: {variable_code: value}}. geoid may be a single geoid
+    (str) or a list of geoids -- when a list, values are SUMMED across
+    geographies in SQL before any percentage math happens in the caller
+    (category_breakdown etc.), which is what makes a regional "Aggregated"
+    view mathematically valid: sum raw counts first, recompute the
+    percentage from the summed totals, never average percentages directly."""
+    is_region = isinstance(geoid, (list, tuple))
     with engine.connect() as conn:
-        rows = conn.execute(
-            text("""
-                SELECT year, variable_code, estimate FROM acs_estimates
-                WHERE geoid = :geoid AND table_id = :table_id AND variable_code = ANY(:codes)
-                  AND year BETWEEN :start AND :end
-            """),
-            {"geoid": geoid, "table_id": table_id, "codes": variable_codes, "start": start_year, "end": end_year},
-        )
+        if is_region:
+            rows = conn.execute(
+                text("""
+                    SELECT year, variable_code, SUM(estimate) AS estimate FROM acs_estimates
+                    WHERE geoid = ANY(:geoids) AND table_id = :table_id AND variable_code = ANY(:codes)
+                      AND year BETWEEN :start AND :end
+                    GROUP BY year, variable_code
+                """),
+                {"geoids": list(geoid), "table_id": table_id, "codes": variable_codes, "start": start_year, "end": end_year},
+            )
+        else:
+            rows = conn.execute(
+                text("""
+                    SELECT year, variable_code, estimate FROM acs_estimates
+                    WHERE geoid = :geoid AND table_id = :table_id AND variable_code = ANY(:codes)
+                      AND year BETWEEN :start AND :end
+                """),
+                {"geoid": geoid, "table_id": table_id, "codes": variable_codes, "start": start_year, "end": end_year},
+            )
         data = {}
         for row in rows:
             if row.estimate is not None:
@@ -160,20 +177,36 @@ def _normalize_dp04_label(label: str) -> str:
     return "!!".join(parts)
 
 
-def _fetch_dp04_by_label(engine, geoid: str, start_year: int, end_year: int) -> dict:
+def _fetch_dp04_by_label(engine, geoid, start_year: int, end_year: int) -> dict:
+    """geoid may be a single geoid or a list -- when a list, sums across
+    geographies per (year, normalized_label). Done in Python rather than
+    SQL because the label normalization itself is Python-side."""
+    is_region = isinstance(geoid, (list, tuple))
     with engine.connect() as conn:
-        rows = conn.execute(
-            text("""
-                SELECT year, variable_label, estimate FROM acs_estimates
-                WHERE geoid = :geoid AND table_id = 'DP04' AND year BETWEEN :start AND :end
-                  AND variable_code NOT LIKE '%P'
-            """),
-            {"geoid": geoid, "start": start_year, "end": end_year},
-        )
+        if is_region:
+            rows = conn.execute(
+                text("""
+                    SELECT year, variable_label, estimate FROM acs_estimates
+                    WHERE geoid = ANY(:geoids) AND table_id = 'DP04' AND year BETWEEN :start AND :end
+                      AND variable_code NOT LIKE '%P'
+                """),
+                {"geoids": list(geoid), "start": start_year, "end": end_year},
+            )
+        else:
+            rows = conn.execute(
+                text("""
+                    SELECT year, variable_label, estimate FROM acs_estimates
+                    WHERE geoid = :geoid AND table_id = 'DP04' AND year BETWEEN :start AND :end
+                      AND variable_code NOT LIKE '%P'
+                """),
+                {"geoid": geoid, "start": start_year, "end": end_year},
+            )
         data = {}
         for row in rows:
             if row.estimate is not None:
-                data.setdefault(row.year, {})[_normalize_dp04_label(row.variable_label)] = float(row.estimate)
+                label = _normalize_dp04_label(row.variable_label)
+                year_data = data.setdefault(row.year, {})
+                year_data[label] = year_data.get(label, 0.0) + float(row.estimate)
         return data
 
 
@@ -358,22 +391,37 @@ def _normalize_dp05_label(label: str) -> str:
     return "!!".join(parts).lower()
 
 
-def _fetch_dp05_by_label(engine, geoid: str, start_year: int, end_year: int) -> dict:
+def _fetch_dp05_by_label(engine, geoid, start_year: int, end_year: int) -> dict:
     """Returns {year: {normalized_label: value}}, resolved by label text so
-    it's immune to DP05's code-number drift across vintages."""
+    it's immune to DP05's code-number drift across vintages. geoid may be a
+    single geoid or a list -- when a list, sums across geographies (see
+    _fetch_dp04_by_label for why this happens in Python, not SQL)."""
+    is_region = isinstance(geoid, (list, tuple))
     with engine.connect() as conn:
-        rows = conn.execute(
-            text("""
-                SELECT year, variable_label, estimate FROM acs_estimates
-                WHERE geoid = :geoid AND table_id = 'DP05' AND year BETWEEN :start AND :end
-                  AND variable_code NOT LIKE '%P'
-            """),
-            {"geoid": geoid, "start": start_year, "end": end_year},
-        )
+        if is_region:
+            rows = conn.execute(
+                text("""
+                    SELECT year, variable_label, estimate FROM acs_estimates
+                    WHERE geoid = ANY(:geoids) AND table_id = 'DP05' AND year BETWEEN :start AND :end
+                      AND variable_code NOT LIKE '%P'
+                """),
+                {"geoids": list(geoid), "start": start_year, "end": end_year},
+            )
+        else:
+            rows = conn.execute(
+                text("""
+                    SELECT year, variable_label, estimate FROM acs_estimates
+                    WHERE geoid = :geoid AND table_id = 'DP05' AND year BETWEEN :start AND :end
+                      AND variable_code NOT LIKE '%P'
+                """),
+                {"geoid": geoid, "start": start_year, "end": end_year},
+            )
         data = {}
         for row in rows:
             if row.estimate is not None:
-                data.setdefault(row.year, {})[_normalize_dp05_label(row.variable_label)] = float(row.estimate)
+                label = _normalize_dp05_label(row.variable_label)
+                year_data = data.setdefault(row.year, {})
+                year_data[label] = year_data.get(label, 0.0) + float(row.estimate)
         return data
 
 
@@ -620,3 +668,24 @@ CHART_FUNCTIONS = {
 def get_full_dashboard(geoid: str, start_year: int, end_year: int, engine=None) -> dict:
     engine = engine or get_engine()
     return {name: func(engine, geoid, start_year, end_year) for name, func in CHART_FUNCTIONS.items()}
+
+
+# True medians (Median Home Value, Median Rent, Median Age, Median Household
+# Income) can't be derived from a region's constituent medians -- Census only
+# publishes the median itself, not the distribution behind it, so there's no
+# valid way to combine them. Omitted from the aggregated view entirely rather
+# than averaged, which would silently produce a number that looks legitimate
+# but isn't (an "average of medians" is not a regional median).
+REGION_EXCLUDED_CHARTS = {"median_home_value", "median_rent", "median_age", "median_household_income"}
+
+
+def get_full_dashboard_region(geoids: list, start_year: int, end_year: int, engine=None) -> dict:
+    """Aggregated regional view: counts and category breakdowns sum cleanly
+    across geoids (fetch_multi/_fetch_dp04_by_label/_fetch_dp05_by_label sum
+    in SQL/Python before any percentage math), true medians are excluded."""
+    engine = engine or get_engine()
+    return {
+        name: func(engine, geoids, start_year, end_year)
+        for name, func in CHART_FUNCTIONS.items()
+        if name not in REGION_EXCLUDED_CHARTS
+    }

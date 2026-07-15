@@ -1,0 +1,174 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { api, type GeoType, type GeographySummary, type ComparativeMatch } from '../lib/api'
+import GeographyList from '../components/GeographyList'
+import MultiGeoDashboard from './MultiGeoDashboard'
+
+const MAX_COMPARISONS = 5
+const SUGGESTION_YEAR = 2024
+
+export default function ComparativeAnalysis() {
+  const [geoType, setGeoType] = useState<GeoType>('place')
+  const [primaryGeoid, setPrimaryGeoid] = useState<string | null>(null)
+  const [primaryGeo, setPrimaryGeo] = useState<GeographySummary | null>(null)
+  const [suggestions, setSuggestions] = useState<ComparativeMatch[]>([])
+  const [comparisonGeoids, setComparisonGeoids] = useState<string[]>([])
+  const [showDashboard, setShowDashboard] = useState(false)
+
+  useEffect(() => {
+    if (!primaryGeoid) {
+      setPrimaryGeo(null)
+      return
+    }
+    api.getGeography(primaryGeoid).then(setPrimaryGeo).catch(() => setPrimaryGeo(null))
+  }, [primaryGeoid])
+
+  // Suggested top-5 most similar communities pre-populate the comparison
+  // set (per the UX outline), which the user can then adjust below.
+  useEffect(() => {
+    if (!primaryGeoid) {
+      setSuggestions([])
+      setComparisonGeoids([])
+      return
+    }
+    api
+      .getComparativeCommunities(primaryGeoid, { year: SUGGESTION_YEAR, top_n: 5 })
+      .then((res) => {
+        setSuggestions(res.results)
+        setComparisonGeoids(res.results.map((r) => r.geoid))
+      })
+      .catch(() => setSuggestions([]))
+  }, [primaryGeoid])
+
+  function toggleComparison(geoid: string) {
+    setComparisonGeoids((prev) =>
+      prev.includes(geoid) ? prev.filter((g) => g !== geoid) : prev.length < MAX_COMPARISONS ? [...prev, geoid] : prev
+    )
+  }
+
+  if (showDashboard && primaryGeo) {
+    const geographies = [
+      { geoid: primaryGeo.geoid, label: primaryGeo.display_name },
+      ...comparisonGeoids
+        .filter((g) => g !== primaryGeo.geoid)
+        .map((geoid) => {
+          const match = suggestions.find((s) => s.geoid === geoid)
+          return { geoid, label: match?.display_name ?? geoid }
+        }),
+    ]
+    return (
+      <div className="flex-1 flex flex-col items-center px-6 py-10 gap-4">
+        <div className="text-center">
+          <h1 className="text-3xl font-medium text-abakus-charcoal mb-1">Comparative Analysis</h1>
+          <p className="text-abakus-light-grey text-sm">{geographies.map((g) => g.label).join(' vs. ')}</p>
+          <button type="button" onClick={() => setShowDashboard(false)} className="text-abakus-blue hover:underline text-sm mt-1">
+            Change geographies
+          </button>
+        </div>
+        <MultiGeoDashboard geographies={geographies} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex-1 flex flex-col items-center px-6 py-12 gap-6">
+      <div className="text-center">
+        <h1 className="text-3xl font-medium text-abakus-charcoal mb-2">Comparative Analysis</h1>
+        <p className="text-abakus-light-grey">Choose a primary geography, then up to five to compare it against.</p>
+      </div>
+
+      <ToggleGroup
+        value={geoType}
+        onChange={(v) => {
+          setGeoType(v as GeoType)
+          setPrimaryGeoid(null)
+        }}
+        options={[
+          { value: 'place', label: 'Place' },
+          { value: 'county', label: 'County' },
+        ]}
+      />
+
+      <div>
+        <p className="text-sm text-abakus-light-grey mb-2 text-center">Primary geography</p>
+        <GeographyList
+          key={`primary-${geoType}`}
+          geoType={geoType}
+          selectedGeoids={primaryGeoid ? [primaryGeoid] : []}
+          onToggle={setPrimaryGeoid}
+        />
+      </div>
+
+      {primaryGeo && (
+        <div className="w-full max-w-lg flex flex-col gap-4">
+          <div>
+            <p className="text-sm text-abakus-light-grey mb-2 text-center">
+              Comparison geographies ({comparisonGeoids.length}/{MAX_COMPARISONS}) -- suggested most similar to{' '}
+              {primaryGeo.display_name} are pre-selected
+            </p>
+            <ul className="border border-abakus-charcoal/10 rounded-lg bg-white divide-y divide-abakus-charcoal/5">
+              {suggestions.map((s) => (
+                <li key={s.geoid}>
+                  <button
+                    type="button"
+                    onClick={() => toggleComparison(s.geoid)}
+                    disabled={!comparisonGeoids.includes(s.geoid) && comparisonGeoids.length >= MAX_COMPARISONS}
+                    className={`w-full text-left px-4 py-2 text-sm flex justify-between ${
+                      comparisonGeoids.includes(s.geoid) ? 'bg-abakus-pink/10 font-medium' : 'hover:bg-abakus-cream'
+                    }`}
+                  >
+                    <span>{s.display_name}</span>
+                    <span className="text-abakus-light-grey">#{s.rank}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <p className="text-sm text-abakus-light-grey mb-2 text-center">Or search for others</p>
+            <GeographyList
+              key={`comparison-${geoType}`}
+              geoType={geoType}
+              selectedGeoids={comparisonGeoids}
+              onToggle={toggleComparison}
+              maxSelect={MAX_COMPARISONS}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowDashboard(true)}
+            disabled={comparisonGeoids.length === 0}
+            className="bg-abakus-pink text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40"
+          >
+            Open Dashboard
+          </button>
+        </div>
+      )}
+
+      <Link to="/" className="text-abakus-blue hover:underline text-sm mt-auto">
+        Back to mode selection
+      </Link>
+    </div>
+  )
+}
+
+function ToggleGroup({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <div className="inline-flex rounded-lg border border-abakus-charcoal/15 overflow-hidden">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`px-4 py-1.5 text-sm font-medium transition-colors ${
+            value === opt.value ? 'bg-abakus-charcoal text-white' : 'bg-white text-abakus-charcoal hover:bg-abakus-cream'
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
