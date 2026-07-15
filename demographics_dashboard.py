@@ -89,6 +89,76 @@ def fetch_multi(engine, geoid, table_id: str, variable_codes: list, start_year: 
         return data
 
 
+def _fetch_per_geoid(engine, geoid, table_id: str, variable_codes: list, start_year: int, end_year: int) -> dict:
+    """Like fetch_multi(), but never aggregates across geoids in SQL --
+    returns {(geoid, year): {variable_code: value}} for every geoid
+    individually. Needed wherever a variable is percentage-typed at the
+    source (S1901's income bins always; S2501's household size/type before
+    2017 -- see S2501_FORMAT_CHANGE_YEAR): those can't be summed across
+    geographies the way raw counts can. SUM(4.3%, 5.1%, ...) across five
+    ~100%-summing distributions produces ~500%, not a valid percentage --
+    each geoid's percent has to be converted to a raw count using THAT
+    geoid's own denominator first (see _region_safe_breakdown), the same
+    "sum raw counts first" principle fetch_multi()'s SQL-level SUM already
+    applies, just requiring per-geoid work here since the raw figures
+    themselves aren't counts."""
+    geoids = list(geoid) if isinstance(geoid, (list, tuple)) else [geoid]
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT geoid, year, variable_code, estimate FROM acs_estimates
+                WHERE geoid = ANY(:geoids) AND table_id = :table_id AND variable_code = ANY(:codes)
+                  AND year BETWEEN :start AND :end
+            """),
+            {"geoids": geoids, "table_id": table_id, "codes": variable_codes, "start": start_year, "end": end_year},
+        )
+        data = {}
+        for row in rows:
+            if row.estimate is not None:
+                data.setdefault((row.geoid, row.year), {})[row.variable_code] = float(row.estimate)
+        return data
+
+
+def _region_safe_breakdown(per_geoid: dict, denom_code: str, numerator_codes: dict, to_count) -> dict:
+    """Builds a category_breakdown()-shaped result from _fetch_per_geoid()
+    output, for sources where the raw value isn't already a directly
+    summable count. to_count(raw_value, denom_value, year) converts one
+    geoid-year-label's raw figure to an absolute count (e.g. percent x
+    denom); that per-geoid count is what gets summed across geographies,
+    with the percentage recomputed afterward from the region-summed
+    totals -- valid for a single geoid or a multi-geoid region alike."""
+    region_totals = {}  # {year: {"__denom__": total, label: total}}
+    for (_, year), values in per_geoid.items():
+        denom = values.get(denom_code)
+        if not denom:
+            continue
+        year_totals = region_totals.setdefault(year, {"__denom__": 0.0})
+        year_totals["__denom__"] += denom
+        for label, code in numerator_codes.items():
+            if code not in values:
+                continue
+            year_totals[label] = year_totals.get(label, 0.0) + to_count(values[code], denom, year)
+
+    categories = {}
+    raw_categories = {}
+    for year, totals in region_totals.items():
+        denom = totals["__denom__"]
+        if not denom:
+            continue
+        year_result = {}
+        year_raw = {}
+        for label in numerator_codes:
+            if label not in totals:
+                continue
+            year_result[label] = totals[label] / denom
+            year_raw[label] = totals[label]
+        if year_result:
+            categories[year] = year_result
+            raw_categories[year] = year_raw
+
+    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
+
+
 def direct_series(engine, geoid: str, table_id: str, variable_code: str, start_year: int, end_year: int) -> dict:
     """A single value per year -- always a line chart. Used for Population,
     Households, Housing Units, Median Home Value, Median Rent, Median Age,
@@ -545,31 +615,19 @@ TOTAL_HOUSEHOLDS_CODE = "S1901_C01_001"
 
 def household_income(engine, geoid, start_year, end_year):
     # S1901's income-bin variables are already percentages (e.g. 4.3 means
-    # 4.3%), unlike every other category_breakdown() table here -- dividing
-    # by S1901_C01_001 (Total households, a raw count) would be wrong. For
-    # the same reason, raw_categories here is a DERIVED count (percent x
-    # total households) rather than a directly reported figure, unlike
-    # every other chart's raw_categories.
+    # 4.3%) for their entire vintage range, unlike every other
+    # category_breakdown() table here -- fetched per-geoid and converted to
+    # a count via that geoid's own S1901_C01_001 (Total households) before
+    # summing across geographies, see _region_safe_breakdown. raw_categories
+    # here is therefore a DERIVED count (percent x total households) rather
+    # than a directly reported figure, unlike every other chart's
+    # raw_categories.
     codes = list(HOUSEHOLD_INCOME_CODES.values()) + [TOTAL_HOUSEHOLDS_CODE]
-    data = fetch_multi(engine, geoid, "S1901", codes, start_year, end_year)
-    categories = {}
-    raw_categories = {}
-    for year, values in data.items():
-        total = values.get(TOTAL_HOUSEHOLDS_CODE)
-        year_result = {}
-        year_raw = {}
-        for label, code in HOUSEHOLD_INCOME_CODES.items():
-            if code not in values:
-                continue
-            pct = values[code] / 100.0
-            year_result[label] = pct
-            if total:
-                year_raw[label] = pct * total
-        if year_result:
-            categories[year] = year_result
-        if year_raw:
-            raw_categories[year] = year_raw
-    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
+    per_geoid = _fetch_per_geoid(engine, geoid, "S1901", codes, start_year, end_year)
+    return _region_safe_breakdown(
+        per_geoid, TOTAL_HOUSEHOLDS_CODE, HOUSEHOLD_INCOME_CODES,
+        to_count=lambda raw, total, year: (raw / 100.0) * total,
+    )
 
 
 def household_income_simplified(engine, geoid, start_year, end_year):
@@ -671,33 +729,20 @@ S2501_FORMAT_CHANGE_YEAR = 2017
 
 
 def _s2501_breakdown(engine, geoid, numerator_codes: dict, start_year, end_year):
+    # Pre-2017 values are a percent of occupied housing units (e.g. 37.2
+    # means 37.2%), not a count -- fetched per-geoid and converted using
+    # that geoid's own occupied total before summing across geographies,
+    # see _region_safe_breakdown. 2017+ values are already counts, so the
+    # conversion is a no-op (to_count returns raw unchanged) and this
+    # reduces to a normal per-geoid sum.
     occupied_code = "S2501_C01_001"
     all_codes = [occupied_code] + list(numerator_codes.values())
-    data = fetch_multi(engine, geoid, "S2501", all_codes, start_year, end_year)
+    per_geoid = _fetch_per_geoid(engine, geoid, "S2501", all_codes, start_year, end_year)
 
-    categories = {}
-    raw_categories = {}
-    for year, values in data.items():
-        occupied = values.get(occupied_code)
-        if not occupied:
-            continue
-        year_result = {}
-        year_raw = {}
-        for label, code in numerator_codes.items():
-            if code not in values:
-                continue
-            raw = values[code]
-            if year >= S2501_FORMAT_CHANGE_YEAR:
-                year_result[label] = raw / occupied  # raw is a count
-                year_raw[label] = raw
-            else:
-                year_result[label] = raw / 100.0  # raw is already a percent (e.g. 37.2 = 37.2%)
-                year_raw[label] = (raw / 100.0) * occupied  # DERIVED -- source has no count pre-2017
-        if year_result:
-            categories[year] = year_result
-            raw_categories[year] = year_raw
+    def to_count(raw, occupied, year):
+        return raw if year >= S2501_FORMAT_CHANGE_YEAR else (raw / 100.0) * occupied
 
-    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
+    return _region_safe_breakdown(per_geoid, occupied_code, numerator_codes, to_count=to_count)
 
 
 def household_size(engine, geoid, start_year, end_year):
