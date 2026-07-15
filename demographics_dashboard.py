@@ -180,34 +180,42 @@ def _normalize_dp04_label(label: str) -> str:
 def _fetch_dp04_by_label(engine, geoid, start_year: int, end_year: int) -> dict:
     """geoid may be a single geoid or a list -- when a list, sums across
     geographies per (year, normalized_label). Done in Python rather than
-    SQL because the label normalization itself is Python-side."""
+    SQL because the label normalization itself is Python-side.
+
+    Values are deduplicated per (geoid, year, label) before summing across
+    geographies. Some vintages report what becomes the same normalized
+    label twice within a single geoid -- e.g. 2010-2012 DP04's SMOCAPI
+    percent-bin rows don't include a "with/without a mortgage" prefix in
+    their own label text (only the section header row does), so the
+    "with mortgage" and "without mortgage" bins collide after
+    normalization. Summing those would silently fabricate a number that
+    doesn't correspond to anything; keeping one occurrence per geoid
+    doesn't change any chart's output today (nothing currently resolves
+    those particular collided labels) but avoids the same class of bug
+    that corrupted DP05's totals -- see _fetch_dp05_by_label."""
     is_region = isinstance(geoid, (list, tuple))
+    geoids = list(geoid) if is_region else [geoid]
     with engine.connect() as conn:
-        if is_region:
-            rows = conn.execute(
-                text("""
-                    SELECT year, variable_label, estimate FROM acs_estimates
-                    WHERE geoid = ANY(:geoids) AND table_id = 'DP04' AND year BETWEEN :start AND :end
-                      AND variable_code NOT LIKE '%P'
-                """),
-                {"geoids": list(geoid), "start": start_year, "end": end_year},
-            )
-        else:
-            rows = conn.execute(
-                text("""
-                    SELECT year, variable_label, estimate FROM acs_estimates
-                    WHERE geoid = :geoid AND table_id = 'DP04' AND year BETWEEN :start AND :end
-                      AND variable_code NOT LIKE '%P'
-                """),
-                {"geoid": geoid, "start": start_year, "end": end_year},
-            )
-        data = {}
+        rows = conn.execute(
+            text("""
+                SELECT geoid, year, variable_label, estimate FROM acs_estimates
+                WHERE geoid = ANY(:geoids) AND table_id = 'DP04' AND year BETWEEN :start AND :end
+                  AND variable_code NOT LIKE '%P'
+            """),
+            {"geoids": geoids, "start": start_year, "end": end_year},
+        )
+        per_geoid = {}  # {(geoid, year): {label: value}}
         for row in rows:
             if row.estimate is not None:
                 label = _normalize_dp04_label(row.variable_label)
-                year_data = data.setdefault(row.year, {})
-                year_data[label] = year_data.get(label, 0.0) + float(row.estimate)
-        return data
+                per_geoid.setdefault((row.geoid, row.year), {})[label] = float(row.estimate)
+
+    data = {}
+    for (_, year), values in per_geoid.items():
+        year_data = data.setdefault(year, {})
+        for label, value in values.items():
+            year_data[label] = year_data.get(label, 0.0) + value
+    return data
 
 
 def _find_dp04(year_values: dict, starts_with: str = None, ends_with: str = None):
@@ -395,34 +403,43 @@ def _fetch_dp05_by_label(engine, geoid, start_year: int, end_year: int) -> dict:
     """Returns {year: {normalized_label: value}}, resolved by label text so
     it's immune to DP05's code-number drift across vintages. geoid may be a
     single geoid or a list -- when a list, sums across geographies (see
-    _fetch_dp04_by_label for why this happens in Python, not SQL)."""
+    _fetch_dp04_by_label for why this happens in Python, not SQL).
+
+    Values are deduplicated per (geoid, year, label) before summing across
+    geographies. DP05 genuinely restates several rows verbatim under more
+    than one section header within a single geoid/year -- "Total
+    population" is reported once each under SEX AND AGE, RACE, and
+    HISPANIC OR LATINO AND RACE, and "One race" appears twice within the
+    RACE section itself. Normalization strips the section header (that's
+    the whole point -- it's what makes DP05's code drift across vintages
+    resolvable by label), so these restatements collide onto the same key.
+    They're the same figure repeated, not separate quantities to combine:
+    naive accumulation was tripling "Total population" and doubling "One
+    race", which is why age_by_cohort/hispanic_ethnicity (denominator:
+    Total population) and race (denominator: One race) didn't sum to 100%."""
     is_region = isinstance(geoid, (list, tuple))
+    geoids = list(geoid) if is_region else [geoid]
     with engine.connect() as conn:
-        if is_region:
-            rows = conn.execute(
-                text("""
-                    SELECT year, variable_label, estimate FROM acs_estimates
-                    WHERE geoid = ANY(:geoids) AND table_id = 'DP05' AND year BETWEEN :start AND :end
-                      AND variable_code NOT LIKE '%P'
-                """),
-                {"geoids": list(geoid), "start": start_year, "end": end_year},
-            )
-        else:
-            rows = conn.execute(
-                text("""
-                    SELECT year, variable_label, estimate FROM acs_estimates
-                    WHERE geoid = :geoid AND table_id = 'DP05' AND year BETWEEN :start AND :end
-                      AND variable_code NOT LIKE '%P'
-                """),
-                {"geoid": geoid, "start": start_year, "end": end_year},
-            )
-        data = {}
+        rows = conn.execute(
+            text("""
+                SELECT geoid, year, variable_label, estimate FROM acs_estimates
+                WHERE geoid = ANY(:geoids) AND table_id = 'DP05' AND year BETWEEN :start AND :end
+                  AND variable_code NOT LIKE '%P'
+            """),
+            {"geoids": geoids, "start": start_year, "end": end_year},
+        )
+        per_geoid = {}  # {(geoid, year): {label: value}}
         for row in rows:
             if row.estimate is not None:
                 label = _normalize_dp05_label(row.variable_label)
-                year_data = data.setdefault(row.year, {})
-                year_data[label] = year_data.get(label, 0.0) + float(row.estimate)
-        return data
+                per_geoid.setdefault((row.geoid, row.year), {})[label] = float(row.estimate)
+
+    data = {}
+    for (_, year), values in per_geoid.items():
+        year_data = data.setdefault(year, {})
+        for label, value in values.items():
+            year_data[label] = year_data.get(label, 0.0) + value
+    return data
 
 
 def _dp05_category_breakdown(engine, geoid, numerator_labels: dict, denominator_label: str, start_year, end_year) -> dict:
@@ -539,60 +556,73 @@ def median_household_income(engine, geoid, start_year, end_year):
 
 
 # ============================================================
-# Tenure by age / income (B25007, B25118) -- denominator differs by section
+# Tenure by age / income (B25007, B25118)
+#
+# The Guide to Abakus PDF specifies dividing each section's rows by that
+# section's own denominator (Owner occupied: or Renter occupied:), which is
+# what _tenure_section_breakdown does -- each call covers ONE section, so
+# its own stacked_bar result correctly sums to 100%. Owner and renter are
+# therefore separate chart entries (four total between age and income)
+# rather than one combined chart, which would otherwise sum to 200% (two
+# independent 100% distributions rendered as a single stack).
 # ============================================================
 
-def _tenure_breakdown(engine, geoid, table_id, owner_denom, owner_codes, renter_denom, renter_codes, start_year, end_year):
-    all_codes = [owner_denom, renter_denom] + list(owner_codes.values()) + list(renter_codes.values())
+def _tenure_section_breakdown(engine, geoid, table_id, denom_code, codes, start_year, end_year):
+    all_codes = [denom_code] + list(codes.values())
     data = fetch_multi(engine, geoid, table_id, all_codes, start_year, end_year)
 
     categories = {}
     for year, values in data.items():
-        year_result = {}
-        owner_total = values.get(owner_denom)
-        if owner_total:
-            for label, code in owner_codes.items():
-                if code in values:
-                    year_result[f"Owner: {label}"] = values[code] / owner_total
-        renter_total = values.get(renter_denom)
-        if renter_total:
-            for label, code in renter_codes.items():
-                if code in values:
-                    year_result[f"Renter: {label}"] = values[code] / renter_total
+        denom = values.get(denom_code)
+        if not denom:
+            continue
+        year_result = {label: values[code] / denom for label, code in codes.items() if code in values}
         if year_result:
             categories[year] = year_result
 
     return {"chart_type": "stacked_bar", "categories": categories}
 
 
-def tenure_by_age(engine, geoid, start_year, end_year):
-    owner_codes = {
-        "15 to 24 years": "B25007_003", "25 to 34 years": "B25007_004", "35 to 44 years": "B25007_005",
-        "45 to 54 years": "B25007_006", "55 to 59 years": "B25007_007", "60 to 64 years": "B25007_008",
-        "65 to 74 years": "B25007_009", "75 to 84 years": "B25007_010", "85 years and over": "B25007_011",
-    }
-    renter_codes = {
-        "15 to 24 years": "B25007_013", "25 to 34 years": "B25007_014", "35 to 44 years": "B25007_015",
-        "45 to 54 years": "B25007_016", "55 to 59 years": "B25007_017", "60 to 64 years": "B25007_018",
-        "65 to 74 years": "B25007_019", "75 to 84 years": "B25007_020", "85 years and over": "B25007_021",
-    }
-    return _tenure_breakdown(engine, geoid, "B25007", "B25007_002", owner_codes, "B25007_012", renter_codes, start_year, end_year)
+TENURE_BY_AGE_OWNER_CODES = {
+    "15 to 24 years": "B25007_003", "25 to 34 years": "B25007_004", "35 to 44 years": "B25007_005",
+    "45 to 54 years": "B25007_006", "55 to 59 years": "B25007_007", "60 to 64 years": "B25007_008",
+    "65 to 74 years": "B25007_009", "75 to 84 years": "B25007_010", "85 years and over": "B25007_011",
+}
+TENURE_BY_AGE_RENTER_CODES = {
+    "15 to 24 years": "B25007_013", "25 to 34 years": "B25007_014", "35 to 44 years": "B25007_015",
+    "45 to 54 years": "B25007_016", "55 to 59 years": "B25007_017", "60 to 64 years": "B25007_018",
+    "65 to 74 years": "B25007_019", "75 to 84 years": "B25007_020", "85 years and over": "B25007_021",
+}
 
 
-def tenure_by_income(engine, geoid, start_year, end_year):
-    owner_codes = {
-        "Less than $5,000": "B25118_003", "$5,000 to $9,999": "B25118_004", "$10,000 to $14,999": "B25118_005",
-        "$15,000 to $19,999": "B25118_006", "$20,000 to $24,999": "B25118_007", "$25,000 to $34,999": "B25118_008",
-        "$35,000 to $49,999": "B25118_009", "$50,000 to $74,999": "B25118_010", "$75,000 to $99,999": "B25118_011",
-        "$100,000 to $149,999": "B25118_012", "$150,000 or more": "B25118_013",
-    }
-    renter_codes = {
-        "Less than $5,000": "B25118_015", "$5,000 to $9,999": "B25118_016", "$10,000 to $14,999": "B25118_017",
-        "$15,000 to $19,999": "B25118_018", "$20,000 to $24,999": "B25118_019", "$25,000 to $34,999": "B25118_020",
-        "$35,000 to $49,999": "B25118_021", "$50,000 to $74,999": "B25118_022", "$75,000 to $99,999": "B25118_023",
-        "$100,000 to $149,999": "B25118_024", "$150,000 or more": "B25118_025",
-    }
-    return _tenure_breakdown(engine, geoid, "B25118", "B25118_002", owner_codes, "B25118_014", renter_codes, start_year, end_year)
+def tenure_by_age_owner(engine, geoid, start_year, end_year):
+    return _tenure_section_breakdown(engine, geoid, "B25007", "B25007_002", TENURE_BY_AGE_OWNER_CODES, start_year, end_year)
+
+
+def tenure_by_age_renter(engine, geoid, start_year, end_year):
+    return _tenure_section_breakdown(engine, geoid, "B25007", "B25007_012", TENURE_BY_AGE_RENTER_CODES, start_year, end_year)
+
+
+TENURE_BY_INCOME_OWNER_CODES = {
+    "Less than $5,000": "B25118_003", "$5,000 to $9,999": "B25118_004", "$10,000 to $14,999": "B25118_005",
+    "$15,000 to $19,999": "B25118_006", "$20,000 to $24,999": "B25118_007", "$25,000 to $34,999": "B25118_008",
+    "$35,000 to $49,999": "B25118_009", "$50,000 to $74,999": "B25118_010", "$75,000 to $99,999": "B25118_011",
+    "$100,000 to $149,999": "B25118_012", "$150,000 or more": "B25118_013",
+}
+TENURE_BY_INCOME_RENTER_CODES = {
+    "Less than $5,000": "B25118_015", "$5,000 to $9,999": "B25118_016", "$10,000 to $14,999": "B25118_017",
+    "$15,000 to $19,999": "B25118_018", "$20,000 to $24,999": "B25118_019", "$25,000 to $34,999": "B25118_020",
+    "$35,000 to $49,999": "B25118_021", "$50,000 to $74,999": "B25118_022", "$75,000 to $99,999": "B25118_023",
+    "$100,000 to $149,999": "B25118_024", "$150,000 or more": "B25118_025",
+}
+
+
+def tenure_by_income_owner(engine, geoid, start_year, end_year):
+    return _tenure_section_breakdown(engine, geoid, "B25118", "B25118_002", TENURE_BY_INCOME_OWNER_CODES, start_year, end_year)
+
+
+def tenure_by_income_renter(engine, geoid, start_year, end_year):
+    return _tenure_section_breakdown(engine, geoid, "B25118", "B25118_014", TENURE_BY_INCOME_RENTER_CODES, start_year, end_year)
 
 
 # ============================================================
@@ -660,7 +690,8 @@ CHART_FUNCTIONS = {
     "race": race, "hispanic_ethnicity": hispanic_ethnicity,
     "household_income": household_income, "household_income_simplified": household_income_simplified,
     "median_household_income": median_household_income,
-    "tenure_by_age": tenure_by_age, "tenure_by_income": tenure_by_income,
+    "tenure_by_age_owner": tenure_by_age_owner, "tenure_by_age_renter": tenure_by_age_renter,
+    "tenure_by_income_owner": tenure_by_income_owner, "tenure_by_income_renter": tenure_by_income_renter,
     "household_size": household_size, "household_type": household_type,
 }
 

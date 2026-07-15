@@ -35,8 +35,10 @@ export const CHART_META: Record<string, ChartMeta> = {
   household_income: { title: 'Household Income', format: 'percent' },
   household_income_simplified: { title: 'Household Income (Simplified)', format: 'percent' },
   median_household_income: { title: 'Median Household Income', format: 'dollars' },
-  tenure_by_age: { title: 'Tenure by Age', format: 'percent' },
-  tenure_by_income: { title: 'Tenure by Income', format: 'percent' },
+  tenure_by_age_owner: { title: 'Tenure by Age -- Owner', format: 'percent' },
+  tenure_by_age_renter: { title: 'Tenure by Age -- Renter', format: 'percent' },
+  tenure_by_income_owner: { title: 'Tenure by Income -- Owner', format: 'percent' },
+  tenure_by_income_renter: { title: 'Tenure by Income -- Renter', format: 'percent' },
   household_size: { title: 'Household Size', format: 'percent' },
   household_type: { title: 'Household Type', format: 'percent' },
 }
