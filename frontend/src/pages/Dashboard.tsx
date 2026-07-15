@@ -4,6 +4,7 @@ import { api, type DashboardResult, type GeographySummary, type GeoType } from '
 import { CHART_META } from '../lib/chartMeta'
 import LineChartCard from '../components/charts/LineChartCard'
 import StackedBarChartCard from '../components/charts/StackedBarChartCard'
+import BinBarChartCard from '../components/charts/BinBarChartCard'
 
 const MIN_YEAR = 2010
 const MAX_YEAR = 2024
@@ -62,11 +63,13 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 w-full max-w-6xl">
           {Object.entries(dashboard).map(([key, chart]) => {
             const meta = CHART_META[key] ?? { title: key, format: 'count' as const }
-            return chart.chart_type === 'line' ? (
-              <LineChartCard key={key} title={meta.title} format={meta.format} series={chart.series} />
-            ) : (
-              <StackedBarChartCard key={key} title={meta.title} categories={chart.categories} />
-            )
+            if (chart.chart_type === 'line') {
+              return <LineChartCard key={key} title={meta.title} format={meta.format} series={chart.series} />
+            }
+            if (chart.chart_type === 'bar') {
+              return <BinBarChartCard key={key} title={meta.title} format={meta.format} categories={chart.categories} />
+            }
+            return <StackedBarChartCard key={key} title={meta.title} categories={chart.categories} />
           })}
         </div>
       )}

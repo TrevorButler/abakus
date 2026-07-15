@@ -27,7 +27,15 @@ export interface StackedBarChart {
   categories: Record<string, Record<string, number>>
 }
 
-export type ChartResult = LineChart | StackedBarChart
+// Same shape as StackedBarChart, but each category is its own bar rather
+// than a slice of one 100% stack -- used for Year Built / Year Moved In,
+// where the bins are the thing being compared, not parts of a whole.
+export interface BarChart {
+  chart_type: 'bar'
+  categories: Record<string, Record<string, number>>
+}
+
+export type ChartResult = LineChart | StackedBarChart | BarChart
 export type DashboardResult = Record<string, ChartResult>
 
 export interface ComparativeMatch {

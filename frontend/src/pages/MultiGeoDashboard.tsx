@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { api, type DashboardResult, type LineChart, type StackedBarChart } from '../lib/api'
+import { api, type BarChart, type DashboardResult, type LineChart, type StackedBarChart } from '../lib/api'
 import { CHART_META } from '../lib/chartMeta'
 import MultiGeoLineChartCard from '../components/charts/MultiGeoLineChartCard'
 import MultiGeoStackedBarChartCard from '../components/charts/MultiGeoStackedBarChartCard'
+import MultiGeoBinBarChartCard from '../components/charts/MultiGeoBinBarChartCard'
 
 const MIN_YEAR = 2010
 const MAX_YEAR = 2024
@@ -73,6 +74,15 @@ export default function MultiGeoDashboard({ geographies }: Props) {
                 if (c?.chart_type === 'line') charts[g.geoid] = c
               })
               return <MultiGeoLineChartCard key={key} title={meta.title} format={meta.format} geographies={geographies} charts={charts} />
+            }
+
+            if (firstResult.chart_type === 'bar') {
+              const charts: Record<string, BarChart> = {}
+              geographies.forEach((g) => {
+                const c = dataByGeoid[g.geoid]?.[key]
+                if (c?.chart_type === 'bar') charts[g.geoid] = c
+              })
+              return <MultiGeoBinBarChartCard key={key} title={meta.title} geographies={geographies} charts={charts} />
             }
 
             const charts: Record<string, StackedBarChart> = {}

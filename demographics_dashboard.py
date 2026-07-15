@@ -102,9 +102,13 @@ def direct_series(engine, geoid: str, table_id: str, variable_code: str, start_y
 
 def category_breakdown(engine, geoid: str, table_id: str, numerator_codes: dict,
                         denominator_code: str, start_year: int, end_year: int,
-                        most_recent_year_only: bool = False) -> dict:
+                        most_recent_year_only: bool = False, chart_type: str = "stacked_bar") -> dict:
     """numerator_codes: {category_label: variable_code}. Returns
-    {chart_type: "stacked_bar", categories: {year: {category_label: percent}}}."""
+    {chart_type: chart_type, categories: {year: {category_label: percent}}}.
+    chart_type is "stacked_bar" (one 100% bar per year, the common case) or
+    "bar" (one bar per category, no stacking or normalization across
+    categories -- used for Year Built / Year Moved In, where the bins are
+    themselves the thing being compared, not slices of a whole)."""
     all_codes = list(numerator_codes.values()) + [denominator_code]
     data = fetch_multi(engine, geoid, table_id, all_codes, start_year, end_year)
 
@@ -124,7 +128,7 @@ def category_breakdown(engine, geoid: str, table_id: str, numerator_codes: dict,
         latest = max(categories)
         categories = {latest: categories[latest]}
 
-    return {"chart_type": "stacked_bar", "categories": categories}
+    return {"chart_type": chart_type, "categories": categories}
 
 
 def regroup_categories(breakdown: dict, group_map: dict) -> dict:
@@ -339,7 +343,7 @@ def year_built(engine, geoid, start_year, end_year):
         "Built 1960 to 1969": "DP04_0023", "Built 1950 to 1959": "DP04_0024", "Built 1940 to 1949": "DP04_0025",
         "Built 1939 or earlier": "DP04_0026",
     }
-    return category_breakdown(engine, geoid, "DP04", codes, "DP04_0016", start_year, end_year, most_recent_year_only=True)
+    return category_breakdown(engine, geoid, "DP04", codes, "DP04_0016", start_year, end_year, most_recent_year_only=True, chart_type="bar")
 
 
 def year_moved_in(engine, geoid, start_year, end_year):
@@ -348,34 +352,15 @@ def year_moved_in(engine, geoid, start_year, end_year):
         "Moved in 2010 to 2017": "DP04_0053", "Moved in 2000 to 2009": "DP04_0054",
         "Moved in 1990 to 1999": "DP04_0055", "Moved in 1989 and earlier": "DP04_0056",
     }
-    return category_breakdown(engine, geoid, "DP04", codes, "DP04_0050", start_year, end_year, most_recent_year_only=True)
+    return category_breakdown(engine, geoid, "DP04", codes, "DP04_0050", start_year, end_year, most_recent_year_only=True, chart_type="bar")
 
 
-# home_value_distribution / rent_paid_distribution: bin *definitions*
-# themselves changed across vintages (e.g. top rent bin was "$1,500 or
-# more" in 2012, "$3,000 or more" by 2022), not just codes -- these can't
-# be shown consistently across years the way other breakdowns can. Both
-# are also marked "Not currently included in Abakus" in the source PDF
-# (never shipped in the legacy tool), so -- like Year Built / Year Moved
-# In, which have the same genuine bin-redefinition problem -- these are
-# restricted to the most recent year only, sidestepping the incompatibility.
-def home_value_distribution(engine, geoid, start_year, end_year):
-    codes = {
-        "Less than $50,000": "DP04_0081", "$50,000 to $99,999": "DP04_0082", "$100,000 to $149,999": "DP04_0083",
-        "$150,000 to $199,999": "DP04_0084", "$200,000 to $299,999": "DP04_0085", "$300,000 to $499,999": "DP04_0086",
-        "$500,000 to $999,999": "DP04_0087", "$1,000,000 or more": "DP04_0088",
-    }
-    return category_breakdown(engine, geoid, "DP04", codes, "DP04_0080", start_year, end_year, most_recent_year_only=True)
-
-
-def rent_paid_distribution(engine, geoid, start_year, end_year):
-    codes = {
-        "Less than $500": "DP04_0127", "$500 to $999": "DP04_0128", "$1,000 to $1,499": "DP04_0129",
-        "$1,500 to $1,999": "DP04_0130", "$2,000 to $2,499": "DP04_0131", "$2,500 to $2,999": "DP04_0132",
-        "$3,000 or more": "DP04_0133",
-    }
-    return category_breakdown(engine, geoid, "DP04", codes, "DP04_0126", start_year, end_year, most_recent_year_only=True)
-
+# home_value_distribution / rent_paid_distribution intentionally omitted:
+# bin *definitions* themselves changed across vintages (e.g. top rent bin
+# was "$1,500 or more" in 2012, "$3,000 or more" by 2022), not just codes,
+# and being restricted to a single point in time on top of that made them
+# more confusing than useful. Also marked "Not currently included in
+# Abakus" in the source PDF -- never shipped in the legacy tool either.
 
 # ============================================================
 # Demographics (DP05) -- resolved by label text per year, not fixed codes.
@@ -682,8 +667,8 @@ CHART_FUNCTIONS = {
     "housing_unit_type": housing_unit_type, "housing_unit_type_simplified": housing_unit_type_simplified,
     "year_built": year_built, "year_moved_in": year_moved_in,
     "tenure": tenure,
-    "median_home_value": median_home_value, "home_value_distribution": home_value_distribution,
-    "median_rent": median_rent, "rent_paid_distribution": rent_paid_distribution,
+    "median_home_value": median_home_value,
+    "median_rent": median_rent,
     "owner_cost_burden": owner_cost_burden, "renter_cost_burden": renter_cost_burden,
     "age_by_cohort": age_by_cohort, "age_by_cohort_simplified": age_by_cohort_simplified,
     "median_age": median_age,
