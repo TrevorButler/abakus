@@ -56,6 +56,56 @@ export interface ComparativeResult {
   results: ComparativeMatch[]
 }
 
+export type RateBasis = '5yr' | '10yr' | 'custom'
+export type TurnoverTier = 'static' | 'dampened' | 'standard' | 'elevated' | 'aggressive' | 'custom'
+export type DemandBasis = 'annual' | 'total'
+
+export interface TurnoverTierOption {
+  key: string
+  label: string
+  value: number
+  notes: string | null
+}
+
+export interface AgeIncomeCell {
+  age_group: string
+  income_bin: string
+  demand: number
+}
+
+export interface HousingDemandResult {
+  geoid: string
+  base_year: number
+  target_year: number
+  population_rate: number
+  household_size_rate: number
+  turnover_rate: number
+  population_actual: Record<string, number>
+  household_size_actual: Record<string, number>
+  population_projected: Record<string, number>
+  household_size_projected: Record<string, number>
+  households: Record<string, number>
+  net_household_change: number
+  turnover_demand_by_year: Record<string, number>
+  total_demand: number
+  annual_demand: number
+  age_income_breakdown: AgeIncomeCell[] | null
+}
+
+export interface HousingDemandParams {
+  base_year: number
+  target_year: number
+  pop_rate_basis: RateBasis
+  pop_custom_rate?: number
+  hh_size_rate_basis: RateBasis
+  hh_size_custom_rate?: number
+  turnover_tier: TurnoverTier
+  turnover_custom_rate?: number
+  b19037_rate_basis: RateBasis
+  b19037_custom_rate?: number
+  b19037_demand_basis: DemandBasis
+}
+
 async function get<T>(path: string, params?: Record<string, string | number | undefined>): Promise<T> {
   const url = new URL(`/api${path}`, window.location.origin)
   if (params) {
@@ -87,4 +137,9 @@ export const api = {
 
   getDashboardRegion: (geoids: string[], params: { start_year: number; end_year: number }) =>
     get<{ excluded_charts: string[]; charts: DashboardResult }>('/dashboard/region', { ...params, geoids: geoids.join(',') }),
+
+  getHousingDemand: (geoid: string, params: HousingDemandParams) =>
+    get<HousingDemandResult>(`/housing-demand/${geoid}`, { ...params }),
+
+  getTurnoverTiers: () => get<TurnoverTierOption[]>('/housing-demand/assumptions/turnover-tiers'),
 }

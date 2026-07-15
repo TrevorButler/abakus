@@ -19,6 +19,12 @@ const MODES = [
     description: 'Select multiple geographies and view them aggregated as a region, or separated out.',
     color: 'bg-abakus-orange',
   },
+  {
+    to: '/housing-demand',
+    title: 'Housing Demand Projections',
+    description: 'Project future housing demand for one geography from population, household size, and turnover assumptions.',
+    color: 'bg-abakus-green',
+  },
 ]
 
 export default function Landing() {
@@ -30,7 +36,7 @@ export default function Landing() {
       <p className="text-abakus-light-grey text-lg mb-12 text-center max-w-xl">
         Pick an analysis mode. You'll choose your geography next.
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 w-full max-w-5xl">
         {MODES.map((mode) => (
           <Link
             key={mode.to}

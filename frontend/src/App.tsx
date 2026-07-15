@@ -5,6 +5,7 @@ import SingleGeography from './pages/SingleGeography'
 import Dashboard from './pages/Dashboard'
 import ComparativeAnalysis from './pages/ComparativeAnalysis'
 import RegionalAnalysis from './pages/RegionalAnalysis'
+import HousingDemand from './pages/HousingDemand'
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="/single/:geoid" element={<Dashboard />} />
         <Route path="/comparative" element={<ComparativeAnalysis />} />
         <Route path="/regional" element={<RegionalAnalysis />} />
+        <Route path="/housing-demand" element={<HousingDemand />} />
       </Routes>
     </Layout>
   )
