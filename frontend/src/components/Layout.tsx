@@ -39,11 +39,11 @@ function SignInScreen() {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6 py-16 gap-8">
-      <img src={logoFull} alt="Abakus" className="h-16 md:h-20 w-auto" />
+      <img src={logoFull} alt="Abakus" className="h-48 md:h-60 w-auto" />
 
       <div className="flex flex-col items-center gap-2 text-center max-w-lg">
         <h1 className="font-sans text-2xl md:text-3xl text-abakus-charcoal font-medium tracking-tight">
-          Because the Data Shouldn't Be the Hard Part
+          because the data shouldn't be the hard part
         </h1>
         <p className="text-abakus-light-grey text-sm max-w-sm">
           Abakus helps planners and civic professionals see the forest for the trees.
