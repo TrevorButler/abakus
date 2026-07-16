@@ -17,6 +17,7 @@ venv/
 # at ~10MB it's small enough to commit, and deployed environments need it
 # without also needing these raw shapefiles.
 Clean Shapefiles/
+PUMA/Shapefiles/
 
 # Frontend (added once scaffolded)
 node_modules/

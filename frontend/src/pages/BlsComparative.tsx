@@ -1,33 +1,37 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, type GeoType, type DashboardResult } from '../lib/api'
-import { CHART_META, type ChartViewMode } from '../lib/chartMeta'
+import { api, BLS_SECTORS, type BlsDashboardResult } from '../lib/api'
+import { blsChartMeta } from '../lib/blsChartMeta'
 import GeographyList from '../components/GeographyList'
 import GeographyMap from '../components/GeographyMap'
+import SectorToggles from '../components/SectorToggles'
 import LineChartCard from '../components/charts/LineChartCard'
 import StackedBarChartCard from '../components/charts/StackedBarChartCard'
-import BinBarChartCard from '../components/charts/BinBarChartCard'
-import MultiGeoDashboard from './MultiGeoDashboard'
+import BlsMultiGeoDashboard from './BlsMultiGeoDashboard'
 import { dashboardSheets } from '../lib/download'
 import DownloadSheetsButton from '../components/DownloadSheetsButton'
 
 const MAX_REGION_SIZE = 50
-const MIN_YEAR = 2010
-const MAX_YEAR = 2024
+const MIN_YEAR = 2014 // QCEW's bulk open-data API only serves a rolling window, not back to 2010
+const MAX_YEAR = 2025
 
-export default function RegionalAnalysis() {
-  const [geoType, setGeoType] = useState<GeoType>('place')
+// Mirrors RegionalAnalysis.tsx's aggregated/separated shape, per the
+// confirmed requirement that BLS's comparative view look like Regional
+// Analysis rather than Comparative Analysis's similarity-ranked
+// suggestions. County-only (no place/county toggle) since QCEW is
+// published at county granularity, and no "top N industries" ranking in
+// either mode (explicitly excluded).
+export default function BlsComparative() {
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
   const [selectedGeoids, setSelectedGeoids] = useState<string[]>([])
   const [geoLabels, setGeoLabels] = useState<Record<string, string>>({})
+  const [sectors, setSectors] = useState<string[]>(BLS_SECTORS.map((s) => s.code))
   const [showDashboard, setShowDashboard] = useState<'aggregated' | 'separated' | null>(null)
 
   function toggleGeo(geoid: string) {
     setSelectedGeoids((prev) => (prev.includes(geoid) ? prev.filter((g) => g !== geoid) : prev.length < MAX_REGION_SIZE ? [...prev, geoid] : prev))
   }
 
-  // Track display names for whatever's currently selected, for the
-  // Separated view's per-geography labels and the summary line.
   useEffect(() => {
     const missing = selectedGeoids.filter((g) => !(g in geoLabels))
     if (missing.length === 0) return
@@ -41,48 +45,36 @@ export default function RegionalAnalysis() {
     return (
       <div className="flex-1 flex flex-col items-center px-6 py-10 gap-4">
         <div className="text-center">
-          <h1 className="text-3xl font-medium text-abakus-charcoal mb-1">Regional Analysis -- Separated</h1>
+          <h1 className="text-3xl font-medium text-abakus-charcoal mb-1">BLS Comparative -- Separated</h1>
           <button type="button" onClick={() => setShowDashboard(null)} className="text-abakus-blue hover:underline text-sm">
-            Change geographies
+            Change counties
           </button>
         </div>
-        <MultiGeoDashboard geographies={geographies} />
+        <SectorToggles selected={sectors} onChange={setSectors} />
+        <BlsMultiGeoDashboard geographies={geographies} sectors={sectors} />
       </div>
     )
   }
 
   if (showDashboard === 'aggregated') {
-    return <AggregatedDashboard geoids={selectedGeoids} onBack={() => setShowDashboard(null)} />
+    return <AggregatedDashboard geoids={selectedGeoids} sectors={sectors} onSectorsChange={setSectors} onBack={() => setShowDashboard(null)} />
   }
 
   return (
     <div className="flex-1 flex flex-col items-center px-6 py-12 gap-6">
       <div className="text-center">
-        <h1 className="text-3xl font-medium text-abakus-charcoal mb-2">Regional Analysis</h1>
-        <p className="text-abakus-light-grey">Select as many geographies as you need for your region.</p>
+        <h1 className="text-3xl font-medium text-abakus-charcoal mb-2">BLS Comparative</h1>
+        <p className="text-abakus-light-grey">Select as many counties as you need for your comparison.</p>
       </div>
 
-      <div className="flex gap-6 items-center">
-        <ToggleGroup
-          value={geoType}
-          onChange={(v) => {
-            setGeoType(v as GeoType)
-            setSelectedGeoids([])
-          }}
-          options={[
-            { value: 'place', label: 'Place' },
-            { value: 'county', label: 'County' },
-          ]}
-        />
-        <ToggleGroup value={viewMode} onChange={(v) => setViewMode(v as 'list' | 'map')} options={[{ value: 'list', label: 'List' }, { value: 'map', label: 'Map' }]} />
-      </div>
+      <ToggleGroup value={viewMode} onChange={(v) => setViewMode(v as 'list' | 'map')} options={[{ value: 'list', label: 'List' }, { value: 'map', label: 'Map' }]} />
 
       <div className="w-full max-w-lg flex justify-center">
         {viewMode === 'list' ? (
-          <GeographyList key={geoType} geoType={geoType} selectedGeoids={selectedGeoids} onToggle={toggleGeo} maxSelect={MAX_REGION_SIZE} />
+          <GeographyList geoType="county" selectedGeoids={selectedGeoids} onToggle={toggleGeo} maxSelect={MAX_REGION_SIZE} />
         ) : (
           <div className="w-full">
-            <GeographyMap geoType={geoType} selectedGeoids={selectedGeoids} onToggle={toggleGeo} />
+            <GeographyMap geoType="county" selectedGeoids={selectedGeoids} onToggle={toggleGeo} />
           </div>
         )}
       </div>
@@ -90,7 +82,7 @@ export default function RegionalAnalysis() {
       {selectedGeoids.length > 0 && (
         <div className="flex flex-col items-center gap-3 border-t border-abakus-charcoal/10 pt-6 w-full max-w-lg">
           <p className="text-abakus-charcoal text-sm text-center">
-            {selectedGeoids.length} geograph{selectedGeoids.length === 1 ? 'y' : 'ies'} selected:{' '}
+            {selectedGeoids.length} count{selectedGeoids.length === 1 ? 'y' : 'ies'} selected:{' '}
             {selectedGeoids.map((g) => geoLabels[g] ?? '...').join(', ')}
           </p>
           <div className="flex gap-3">
@@ -112,42 +104,49 @@ export default function RegionalAnalysis() {
         </div>
       )}
 
-      <Link to="/acs" className="text-abakus-blue hover:underline text-sm mt-auto">
+      <Link to="/bls" className="text-abakus-blue hover:underline text-sm mt-auto">
         Back to mode selection
       </Link>
     </div>
   )
 }
 
-function AggregatedDashboard({ geoids, onBack }: { geoids: string[]; onBack: () => void }) {
+function AggregatedDashboard({
+  geoids,
+  sectors,
+  onSectorsChange,
+  onBack,
+}: {
+  geoids: string[]
+  sectors: string[]
+  onSectorsChange: (codes: string[]) => void
+  onBack: () => void
+}) {
   const [startYear, setStartYear] = useState(MIN_YEAR)
   const [endYear, setEndYear] = useState(MAX_YEAR)
-  const [viewMode, setViewMode] = useState<ChartViewMode>('percent')
-  const [charts, setCharts] = useState<DashboardResult | null>(null)
-  const [excluded, setExcluded] = useState<string[]>([])
+  const [viewMode, setViewMode] = useState<'percent' | 'count'>('percent')
+  const [charts, setCharts] = useState<BlsDashboardResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (sectors.length === 0) return
     setLoading(true)
     setError(null)
-    api
-      .getDashboardRegion(geoids, { start_year: startYear, end_year: endYear })
-      .then((res) => {
-        setCharts(res.charts)
-        setExcluded(res.excluded_charts)
-      })
+    api.bls
+      .getDashboardRegion(geoids, { start_year: startYear, end_year: endYear, sectors: sectors.join(',') })
+      .then(setCharts)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [geoids, startYear, endYear])
+  }, [geoids, sectors, startYear, endYear])
 
   return (
     <div className="flex-1 flex flex-col items-center px-6 py-10 gap-6">
       <div className="text-center">
-        <h1 className="text-3xl font-medium text-abakus-charcoal mb-1">Regional Analysis -- Aggregated</h1>
-        <p className="text-abakus-light-grey text-sm">{geoids.length} geographies summed as one region</p>
+        <h1 className="text-3xl font-medium text-abakus-charcoal mb-1">BLS Comparative -- Aggregated</h1>
+        <p className="text-abakus-light-grey text-sm">{geoids.length} counties summed as one region</p>
         <button type="button" onClick={onBack} className="text-abakus-blue hover:underline text-sm mt-1">
-          Change geographies
+          Change counties
         </button>
       </div>
 
@@ -162,7 +161,7 @@ function AggregatedDashboard({ geoids, onBack }: { geoids: string[]; onBack: () 
         </label>
         <ToggleGroup
           value={viewMode}
-          onChange={(v) => setViewMode(v as ChartViewMode)}
+          onChange={(v) => setViewMode(v as 'percent' | 'count')}
           options={[
             { value: 'percent', label: '%' },
             { value: 'count', label: '#' },
@@ -170,34 +169,18 @@ function AggregatedDashboard({ geoids, onBack }: { geoids: string[]; onBack: () 
         />
       </div>
 
-      {excluded.length > 0 && (
-        <p className="text-xs text-abakus-light-grey max-w-md text-center">
-          True medians (median home value, rent, age, household income) can't be validly derived from a region's constituent
-          medians, so they're omitted here. See the Separated view for per-geography medians.
-        </p>
-      )}
+      <SectorToggles selected={sectors} onChange={onSectorsChange} />
 
+      {sectors.length === 0 && <p className="text-abakus-warm-400 text-sm">Select at least one sector.</p>}
       {error && <p className="text-abakus-warm-400">{error}</p>}
       {loading && <p className="text-abakus-light-grey">Loading...</p>}
 
       {charts && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 w-full max-w-[1600px]">
           {Object.entries(charts).map(([key, chart]) => {
-            const meta = CHART_META[key] ?? { title: key, format: 'count' as const }
+            const meta = blsChartMeta(key)
             if (chart.chart_type === 'line') {
               return <LineChartCard key={key} title={meta.title} format={meta.format} series={chart.series} />
-            }
-            if (chart.chart_type === 'bar') {
-              return (
-                <BinBarChartCard
-                  key={key}
-                  title={meta.title}
-                  format={meta.format}
-                  categories={chart.categories}
-                  rawCategories={chart.raw_categories}
-                  viewMode={viewMode}
-                />
-              )
             }
             return (
               <StackedBarChartCard
@@ -214,8 +197,8 @@ function AggregatedDashboard({ geoids, onBack }: { geoids: string[]; onBack: () 
 
       {charts && (
         <DownloadSheetsButton
-          filename="Regional Analysis.xlsx"
-          sheets={dashboardSheets(charts, (key) => CHART_META[key]?.title ?? key, viewMode)}
+          filename="BLS Comparative Aggregated.xlsx"
+          sheets={dashboardSheets(charts, (key) => blsChartMeta(key).title, viewMode)}
         />
       )}
     </div>

@@ -25,10 +25,14 @@ from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 
 import app_users
+import assumption_sets as asm
 import auth
+import bls_dashboard as bls
+import bls_office_demand as bod
 import comparative_communities as cc
 import demographics_dashboard as dd
 import housing_demand_projections as hdp
+import pums_household_averages as pha
 
 app = FastAPI(title="Abakus API", version="0.1.0")
 
@@ -79,6 +83,10 @@ data_router = APIRouter(dependencies=[Depends(require_user)])
 RateBasis = Literal["5yr", "10yr", "custom"]
 TurnoverTier = Literal["static", "dampened", "standard", "elevated", "aggressive", "custom"]
 DemandBasis = Literal["annual", "total"]
+# Separate Literal from RateBasis above -- BLS office demand has a 4th option
+# (custom_years) that ACS housing demand doesn't, so widening one can't
+# accidentally affect the other's request validation.
+BlsRateBasis = Literal["5yr", "10yr", "custom_rate", "custom_years"]
 
 
 # ============================================================
@@ -94,7 +102,7 @@ def list_states():
 
 @data_router.get("/geography/search")
 def search_geography(
-    geo_type: Literal["place", "county"] = Query(...),
+    geo_type: Literal["place", "county", "puma"] = Query(...),
     state: Optional[str] = Query(None, description="2-letter state abbreviation"),
     q: Optional[str] = Query(None, description="Name search, case-insensitive substring match"),
     limit: int = Query(50, le=500),
@@ -319,14 +327,138 @@ def get_comparative_communities(
 
 
 # ============================================================
+# BLS Employment & Wages
+# ============================================================
+
+def _parse_sectors(sectors: Optional[str]) -> list:
+    if not sectors:
+        return list(bls.ALL_SECTORS.keys())
+    codes = [c.strip() for c in sectors.split(",") if c.strip()]
+    unknown = [c for c in codes if c not in bls.ALL_SECTORS]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown sector code(s): {unknown}. Valid: {sorted(bls.ALL_SECTORS)}")
+    return codes
+
+
+# NB: registered before /bls/dashboard/{geoid} -- same route-ordering
+# precedence issue as /dashboard/region vs /dashboard/{geoid}.
+@data_router.get("/bls/dashboard/region")
+def get_bls_dashboard_region(
+    geoids: str = Query(..., description="Comma-separated county geoids to aggregate"),
+    start_year: int = Query(2010, ge=2010),
+    end_year: int = Query(2024, ge=2010),
+    sectors: Optional[str] = Query(None, description="Comma-separated NAICS sector codes; omit for all 7"),
+):
+    geoid_list = [g.strip() for g in geoids.split(",") if g.strip()]
+    if not geoid_list:
+        raise HTTPException(status_code=400, detail="geoids must contain at least one geoid")
+    if start_year > end_year:
+        raise HTTPException(status_code=400, detail="start_year must be <= end_year")
+    for g in geoid_list:
+        _require_geography(g)
+    sector_list = _parse_sectors(sectors)
+    return bls.get_full_dashboard_region(geoid_list, start_year, end_year, sector_list, engine=engine)
+
+
+@data_router.get("/bls/dashboard/{geoid}")
+def get_bls_dashboard(
+    geoid: str,
+    start_year: int = Query(2010, ge=2010),
+    end_year: int = Query(2024, ge=2010),
+    sectors: Optional[str] = Query(None, description="Comma-separated NAICS sector codes; omit for all 7"),
+):
+    _require_geography(geoid)
+    if start_year > end_year:
+        raise HTTPException(status_code=400, detail="start_year must be <= end_year")
+    sector_list = _parse_sectors(sectors)
+    return bls.get_full_dashboard(geoid, start_year, end_year, sector_list, engine=engine)
+
+
+@data_router.get("/bls/dashboard/charts/list")
+def list_bls_charts():
+    return bls.list_charts()
+
+
+@data_router.get("/bls/office-demand/assumptions")
+def get_bls_office_assumptions():
+    return asm.list_assumptions(engine, "bls_office_")
+
+
+class SectorParam(BaseModel):
+    naics_code: str
+    enabled: bool = True
+    rate_basis: BlsRateBasis = "10yr"
+    custom_rate: Optional[float] = None
+    custom_start_year: Optional[int] = None
+    custom_end_year: Optional[int] = None
+
+
+class OfficeDemandBody(BaseModel):
+    base_year: int
+    target_year: int
+    sectors: list[SectorParam]
+
+
+# JSON body (not GET+query-params) is deliberate here -- 7 sectors x 5 params
+# each is unwieldy as a query string, and a JSON Content-Type forces a CORS
+# preflight the same way AddUserBody's POST does below.
+@data_router.post("/bls/office-demand/{geoid}")
+def post_bls_office_demand(geoid: str, body: OfficeDemandBody):
+    _require_geography(geoid)
+    if body.target_year <= body.base_year:
+        raise HTTPException(status_code=400, detail="target_year must be after base_year")
+
+    enabled = [s for s in body.sectors if s.enabled]
+    if not enabled:
+        raise HTTPException(status_code=400, detail="at least one sector must be enabled")
+    for s in enabled:
+        if s.rate_basis == "custom_rate" and s.custom_rate is None:
+            raise HTTPException(status_code=400, detail=f"custom_rate is required for sector {s.naics_code} when rate_basis is 'custom_rate'")
+        if s.rate_basis == "custom_years":
+            if s.custom_start_year is None or s.custom_end_year is None:
+                raise HTTPException(status_code=400, detail=f"custom_start_year and custom_end_year are required for sector {s.naics_code} when rate_basis is 'custom_years'")
+            if s.custom_start_year >= s.custom_end_year:
+                raise HTTPException(status_code=400, detail=f"custom_start_year must be before custom_end_year for sector {s.naics_code}")
+
+    sector_params = {
+        s.naics_code: {
+            "enabled": s.enabled, "rate_basis": s.rate_basis, "custom_rate": s.custom_rate,
+            "custom_start_year": s.custom_start_year, "custom_end_year": s.custom_end_year,
+        }
+        for s in body.sectors
+    }
+    try:
+        return bod.project_office_demand(geoid, body.base_year, body.target_year, sector_params, engine=engine)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================
+# PUMA / PUMS
+# ============================================================
+
+@data_router.get("/pums/household-summary/{geoid}")
+def get_pums_household_summary(geoid: str):
+    row = _require_geography(geoid, return_row=True)
+    if row["geo_type"] != "puma":
+        raise HTTPException(status_code=400, detail=f"{geoid} is not a PUMA geoid")
+    return pha.get_full_puma_summary(geoid, engine=engine)
+
+
+# ============================================================
 # Shared helpers
 # ============================================================
 
-def _require_geography(geoid: str):
+def _require_geography(geoid: str, return_row: bool = False):
     with engine.connect() as conn:
-        exists = conn.execute(text("SELECT 1 FROM geography WHERE geoid = :geoid"), {"geoid": geoid}).first()
-    if exists is None:
+        if return_row:
+            row = conn.execute(text("SELECT geo_type FROM geography WHERE geoid = :geoid"), {"geoid": geoid}).first()
+        else:
+            row = conn.execute(text("SELECT 1 FROM geography WHERE geoid = :geoid"), {"geoid": geoid}).first()
+    if row is None:
         raise HTTPException(status_code=404, detail=f"Unknown geoid: {geoid}")
+    if return_row:
+        return dict(row._mapping)
 
 
 # ============================================================
@@ -364,6 +496,28 @@ def delete_app_user(email: str):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"deleted": email}
+
+
+class AssumptionBody(BaseModel):
+    label: str
+    value: float
+    notes: Optional[str] = None
+
+
+@admin_router.get("/assumptions")
+def list_admin_assumptions(key_prefix: Optional[str] = Query(None)):
+    return asm.list_assumptions(engine, key_prefix)
+
+
+@admin_router.put("/assumptions/{key}")
+def upsert_admin_assumption(key: str, body: AssumptionBody):
+    return asm.upsert_assumption(engine, key, body.label, body.value, body.notes)
+
+
+@admin_router.delete("/assumptions/{key}")
+def delete_admin_assumption(key: str):
+    asm.delete_assumption(engine, key)
+    return {"deleted": key}
 
 
 app.include_router(data_router)

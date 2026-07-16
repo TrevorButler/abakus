@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, type GeoType, type GeographySummary } from '../lib/api'
+import { api, type GeographySummary } from '../lib/api'
 import GeographyList from '../components/GeographyList'
 import GeographyMap from '../components/GeographyMap'
 
-export default function SingleGeography() {
+// BLS QCEW is published at county granularity only -- no place/county
+// toggle here, unlike the ACS SingleGeography picker this mirrors.
+export default function BlsSingleGeography() {
   const navigate = useNavigate()
-  const [geoType, setGeoType] = useState<GeoType>('place')
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
   const [selectedGeoid, setSelectedGeoid] = useState<string | null>(null)
   const [selectedGeo, setSelectedGeo] = useState<GeographySummary | null>(null)
 
-  // Single source of truth for "what did the user select," regardless of
-  // whether it came from the list or the map -- both just emit a geoid.
   useEffect(() => {
     if (!selectedGeoid) {
       setSelectedGeo(null)
@@ -21,49 +20,33 @@ export default function SingleGeography() {
     api.getGeography(selectedGeoid).then(setSelectedGeo).catch(() => setSelectedGeo(null))
   }, [selectedGeoid])
 
-  function handleGeoTypeChange(next: GeoType) {
-    setGeoType(next)
-    setSelectedGeoid(null)
-  }
-
   return (
     <div className="flex-1 flex flex-col items-center px-6 py-12 gap-8">
       <div className="text-center">
-        <h1 className="text-3xl font-medium text-abakus-charcoal mb-2">Single Geography Analysis</h1>
-        <p className="text-abakus-light-grey">Choose a place or county to explore.</p>
+        <h1 className="text-3xl font-medium text-abakus-charcoal mb-2">BLS Single Geography</h1>
+        <p className="text-abakus-light-grey">Choose a county to explore employment and wage trends.</p>
       </div>
 
-      <div className="flex gap-6 items-center">
-        <ToggleGroup
-          value={geoType}
-          onChange={(v) => handleGeoTypeChange(v as GeoType)}
-          options={[
-            { value: 'place', label: 'Place' },
-            { value: 'county', label: 'County' },
-          ]}
-        />
-        <ToggleGroup
-          value={viewMode}
-          onChange={(v) => setViewMode(v as 'list' | 'map')}
-          options={[
-            { value: 'list', label: 'List' },
-            { value: 'map', label: 'Map' },
-          ]}
-        />
-      </div>
+      <ToggleGroup
+        value={viewMode}
+        onChange={(v) => setViewMode(v as 'list' | 'map')}
+        options={[
+          { value: 'list', label: 'List' },
+          { value: 'map', label: 'Map' },
+        ]}
+      />
 
       <div className="w-full max-w-lg flex justify-center">
         {viewMode === 'list' ? (
           <GeographyList
-            key={geoType}
-            geoType={geoType}
+            geoType="county"
             selectedGeoids={selectedGeoid ? [selectedGeoid] : []}
             onToggle={(geoid) => setSelectedGeoid(geoid)}
           />
         ) : (
           <div className="w-full">
             <GeographyMap
-              geoType={geoType}
+              geoType="county"
               selectedGeoids={selectedGeoid ? [selectedGeoid] : []}
               onToggle={(geoid) => setSelectedGeoid(geoid)}
             />
@@ -78,7 +61,7 @@ export default function SingleGeography() {
           </p>
           <button
             type="button"
-            onClick={() => navigate(`/acs/single/${selectedGeo.geoid}`)}
+            onClick={() => navigate(`/bls/single/${selectedGeo.geoid}`)}
             className="bg-abakus-blue text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity"
           >
             Open Dashboard
@@ -86,7 +69,7 @@ export default function SingleGeography() {
         </div>
       )}
 
-      <Link to="/acs" className="text-abakus-blue hover:underline text-sm mt-auto">
+      <Link to="/bls" className="text-abakus-blue hover:underline text-sm mt-auto">
         Back to mode selection
       </Link>
     </div>

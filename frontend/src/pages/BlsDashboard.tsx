@@ -1,23 +1,24 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, type DashboardResult, type GeographySummary, type GeoType } from '../lib/api'
-import { CHART_META, type ChartViewMode } from '../lib/chartMeta'
+import { api, BLS_SECTORS, type BlsDashboardResult, type GeographySummary, type GeoType } from '../lib/api'
+import { blsChartMeta } from '../lib/blsChartMeta'
 import LineChartCard from '../components/charts/LineChartCard'
 import StackedBarChartCard from '../components/charts/StackedBarChartCard'
-import BinBarChartCard from '../components/charts/BinBarChartCard'
+import SectorToggles from '../components/SectorToggles'
 import { dashboardSheets } from '../lib/download'
 import DownloadSheetsButton from '../components/DownloadSheetsButton'
 
-const MIN_YEAR = 2010
-const MAX_YEAR = 2024
+const MIN_YEAR = 2014 // QCEW's bulk open-data API only serves a rolling window, not back to 2010
+const MAX_YEAR = 2025
 
-export default function Dashboard() {
+export default function BlsDashboard() {
   const { geoid } = useParams<{ geoid: string }>()
   const [geo, setGeo] = useState<(GeographySummary & { geo_type: GeoType }) | null>(null)
   const [startYear, setStartYear] = useState(MIN_YEAR)
   const [endYear, setEndYear] = useState(MAX_YEAR)
-  const [viewMode, setViewMode] = useState<ChartViewMode>('percent')
-  const [dashboard, setDashboard] = useState<DashboardResult | null>(null)
+  const [viewMode, setViewMode] = useState<'percent' | 'count'>('percent')
+  const [sectors, setSectors] = useState<string[]>(BLS_SECTORS.map((s) => s.code))
+  const [dashboard, setDashboard] = useState<BlsDashboardResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -27,15 +28,15 @@ export default function Dashboard() {
   }, [geoid])
 
   useEffect(() => {
-    if (!geoid) return
+    if (!geoid || sectors.length === 0) return
     setLoading(true)
     setError(null)
-    api
-      .getDashboard(geoid, { start_year: startYear, end_year: endYear })
+    api.bls
+      .getDashboard(geoid, { start_year: startYear, end_year: endYear, sectors: sectors.join(',') })
       .then(setDashboard)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [geoid, startYear, endYear])
+  }, [geoid, startYear, endYear, sectors])
 
   if (!geoid) return null
 
@@ -43,8 +44,8 @@ export default function Dashboard() {
     <div className="flex-1 flex flex-col items-center px-6 py-10 gap-6">
       <div className="text-center">
         <h1 className="text-3xl font-medium text-abakus-charcoal mb-1">{geo?.display_name ?? 'Loading...'}</h1>
-        <Link to="/acs/single" className="text-abakus-blue hover:underline text-sm">
-          Choose a different geography
+        <Link to="/bls/single" className="text-abakus-blue hover:underline text-sm">
+          Choose a different county
         </Link>
       </div>
 
@@ -59,7 +60,7 @@ export default function Dashboard() {
         </label>
         <ToggleGroup
           value={viewMode}
-          onChange={(v) => setViewMode(v as ChartViewMode)}
+          onChange={(v) => setViewMode(v as 'percent' | 'count')}
           options={[
             { value: 'percent', label: '%' },
             { value: 'count', label: '#' },
@@ -67,27 +68,18 @@ export default function Dashboard() {
         />
       </div>
 
+      <SectorToggles selected={sectors} onChange={setSectors} />
+
+      {sectors.length === 0 && <p className="text-abakus-warm-400 text-sm">Select at least one sector.</p>}
       {error && <p className="text-abakus-warm-400">{error}</p>}
       {loading && <p className="text-abakus-light-grey">Loading dashboard...</p>}
 
       {dashboard && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 w-full max-w-[1600px]">
           {Object.entries(dashboard).map(([key, chart]) => {
-            const meta = CHART_META[key] ?? { title: key, format: 'count' as const }
+            const meta = blsChartMeta(key)
             if (chart.chart_type === 'line') {
               return <LineChartCard key={key} title={meta.title} format={meta.format} series={chart.series} />
-            }
-            if (chart.chart_type === 'bar') {
-              return (
-                <BinBarChartCard
-                  key={key}
-                  title={meta.title}
-                  format={meta.format}
-                  categories={chart.categories}
-                  rawCategories={chart.raw_categories}
-                  viewMode={viewMode}
-                />
-              )
             }
             return (
               <StackedBarChartCard
@@ -104,8 +96,8 @@ export default function Dashboard() {
 
       {dashboard && (
         <DownloadSheetsButton
-          filename={`${geo?.display_name ?? geoid}.xlsx`}
-          sheets={dashboardSheets(dashboard, (key) => CHART_META[key]?.title ?? key, viewMode)}
+          filename={`${geo?.display_name ?? geoid} - BLS.xlsx`}
+          sheets={dashboardSheets(dashboard, (key) => blsChartMeta(key).title, viewMode)}
         />
       )}
     </div>
@@ -131,17 +123,7 @@ function ToggleGroup({ value, onChange, options }: { value: string; onChange: (v
   )
 }
 
-function YearSelect({
-  value,
-  onChange,
-  min = MIN_YEAR,
-  max = MAX_YEAR,
-}: {
-  value: number
-  onChange: (v: number) => void
-  min?: number
-  max?: number
-}) {
+function YearSelect({ value, onChange, min = MIN_YEAR, max = MAX_YEAR }: { value: number; onChange: (v: number) => void; min?: number; max?: number }) {
   const years = []
   for (let y = MIN_YEAR; y <= MAX_YEAR; y++) years.push(y)
   return (

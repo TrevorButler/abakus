@@ -130,6 +130,88 @@ export interface HousingDemandParams {
   b19037_demand_basis: DemandBasis
 }
 
+// The 7 BLS sectors this app tracks -- matches bls_dashboard.ALL_SECTORS on
+// the backend exactly (order: professional sectors, then healthcare).
+export const BLS_SECTORS: { code: string; label: string }[] = [
+  { code: '51', label: 'Information' },
+  { code: '52', label: 'Finance and Insurance' },
+  { code: '53', label: 'Real Estate and Rental and Leasing' },
+  { code: '54', label: 'Professional, Scientific, and Technical Services' },
+  { code: '55', label: 'Management of Companies and Enterprises' },
+  { code: '56', label: 'Administrative and Support and Waste Management and Remediation Services' },
+  { code: '62', label: 'Health Care and Social Assistance' },
+]
+
+export type BlsDashboardResult = Record<string, ChartResult>
+
+export type BlsRateBasis = '5yr' | '10yr' | 'custom_rate' | 'custom_years'
+
+export interface BlsSectorParam {
+  naics_code: string
+  enabled: boolean
+  rate_basis: BlsRateBasis
+  custom_rate?: number
+  custom_start_year?: number
+  custom_end_year?: number
+}
+
+export interface BlsOfficeDemandParams {
+  base_year: number
+  target_year: number
+  sectors: BlsSectorParam[]
+}
+
+export interface BlsSectorProjection {
+  base_employment: number | null
+  rate: number | null
+  projected_employment: number | null
+}
+
+export interface BlsSectorSqftDemand {
+  employment_delta: number
+  sqft_demand?: number
+  sqft_demand_low?: number
+  sqft_demand_high?: number
+}
+
+export interface BlsPlaceAllocation {
+  display_name: string
+  allocated_sqft: number
+}
+
+export interface BlsOfficeDemandResult {
+  county_geoid: string
+  base_year: number
+  target_year: number
+  sector_projections: Record<string, BlsSectorProjection>
+  sector_sqft_demand: Record<string, BlsSectorSqftDemand>
+  countywide_professional_sqft_demand: number
+  countywide_medical_sqft_demand_low: number
+  countywide_medical_sqft_demand_high: number
+  professional_sqft_by_place: Record<string, BlsPlaceAllocation>
+  medical_sqft_by_place_low: Record<string, BlsPlaceAllocation>
+  medical_sqft_by_place_high: Record<string, BlsPlaceAllocation>
+}
+
+export interface PumaStat {
+  mean: number | null
+  se: number | null
+  n: number
+}
+
+export interface PumaSummary {
+  household_size_by_unit_type: Record<string, PumaStat>
+  school_children_by_unit_type: Record<string, PumaStat>
+  bedroom_distribution: Record<string, number>
+}
+
+export interface AssumptionOption {
+  key: string
+  label: string
+  value: number
+  notes: string | null
+}
+
 // In local dev, this stays "/api" and Vite's proxy (see vite.config.ts)
 // rewrites it to the backend. In production the frontend and backend are
 // separate deployed services with different origins, so VITE_API_URL (set
@@ -179,6 +261,16 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return handle<T>(res)
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return handle<T>(res)
+}
+
 async function del<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { method: 'DELETE', credentials: 'include' })
   return handle<T>(res)
@@ -219,5 +311,30 @@ export const api = {
     listUsers: () => get<AppUser[]>('/admin/users'),
     addUser: (email: string, role: UserRole) => post<AppUser>('/admin/users', { email, role }),
     removeUser: (email: string) => del<{ deleted: string }>(`/admin/users/${encodeURIComponent(email)}`),
+
+    listAssumptions: (keyPrefix?: string) =>
+      get<AssumptionOption[]>('/admin/assumptions', keyPrefix ? { key_prefix: keyPrefix } : undefined),
+    upsertAssumption: (key: string, label: string, value: number, notes?: string) =>
+      put<AssumptionOption>(`/admin/assumptions/${encodeURIComponent(key)}`, { label, value, notes }),
+    removeAssumption: (key: string) => del<{ deleted: string }>(`/admin/assumptions/${encodeURIComponent(key)}`),
+  },
+
+  bls: {
+    getDashboard: (geoid: string, params: { start_year: number; end_year: number; sectors?: string }) =>
+      get<BlsDashboardResult>(`/bls/dashboard/${geoid}`, params),
+
+    getDashboardRegion: (geoids: string[], params: { start_year: number; end_year: number; sectors?: string }) =>
+      get<BlsDashboardResult>('/bls/dashboard/region', { ...params, geoids: geoids.join(',') }),
+
+    listCharts: () => get<string[]>('/bls/dashboard/charts/list'),
+
+    getOfficeDemandAssumptions: () => get<AssumptionOption[]>('/bls/office-demand/assumptions'),
+
+    projectOfficeDemand: (geoid: string, body: BlsOfficeDemandParams) =>
+      post<BlsOfficeDemandResult>(`/bls/office-demand/${geoid}`, body),
+  },
+
+  pums: {
+    getHouseholdSummary: (geoid: string) => get<PumaSummary>(`/pums/household-summary/${geoid}`),
   },
 }

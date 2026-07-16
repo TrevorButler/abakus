@@ -193,7 +193,7 @@ export default function ComparativeAnalysis() {
         )}
       </div>
 
-      <Link to="/" className="text-abakus-blue hover:underline text-sm mt-auto">
+      <Link to="/acs" className="text-abakus-blue hover:underline text-sm mt-auto">
         Back to mode selection
       </Link>
     </div>
