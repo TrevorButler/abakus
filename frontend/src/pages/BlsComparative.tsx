@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, NAICS_SECTORS, type BlsDashboardResult, type LineChart } from '../lib/api'
-import { blsChartMeta, blsDashboardSheets } from '../lib/blsChartMeta'
+import { blsChartMeta } from '../lib/blsChartMeta'
 import GeographyList from '../components/GeographyList'
 import GeographyMap from '../components/GeographyMap'
 import SectorToggles from '../components/SectorToggles'
 import LineChartCard from '../components/charts/LineChartCard'
 import MultiGeoLineChartCard from '../components/charts/MultiGeoLineChartCard'
 import BlsMultiGeoDashboard from './BlsMultiGeoDashboard'
-import DownloadSheetsButton from '../components/DownloadSheetsButton'
+import DownloadWorkbookButton from '../components/DownloadWorkbookButton'
 
 const MAX_REGION_SIZE = 50
 const MIN_YEAR = 2014 // QCEW's bulk open-data API only serves a rolling window, not back to 2010
@@ -189,9 +189,18 @@ function AggregatedDashboard({
       )}
 
       {charts && (
-        <DownloadSheetsButton
+        <DownloadWorkbookButton
           filename="BLS Comparative Aggregated.xlsx"
-          sheets={blsDashboardSheets(charts, (key) => blsChartMeta(key).title)}
+          chartKeys={Object.keys(charts)}
+          titleFor={(key) => blsChartMeta(key).title}
+          fetchWorkbook={(selectedKeys) =>
+            api.bls.downloadDashboardRegionWorkbook(geoids, {
+              start_year: startYear,
+              end_year: endYear,
+              sectors: sectors.join(','),
+              charts: selectedKeys.join(','),
+            })
+          }
         />
       )}
     </div>

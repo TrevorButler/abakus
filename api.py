@@ -35,6 +35,7 @@ import comparative_communities as cc
 import costar_heartbeat as ch
 import costar_market_overview as cmo
 import costar_multifamily_comps as cmc
+import dashboard_excel_export as dex
 import demographics_dashboard as dd
 import housing_demand_projections as hdp
 import pums_household_averages as pha
@@ -159,6 +160,35 @@ def get_neighbors(geoid: str, radius_miles: float = Query(40.0, le=40.0)):
 # Demographics Dashboard
 # ============================================================
 
+# NB: registered before /dashboard/{geoid} -- same route-ordering
+# precedence issue as /dashboard/region below (both are a single path
+# segment after /dashboard/, so /dashboard/{geoid} would otherwise swallow
+# this as a literal geoid "workbook").
+@data_router.get("/dashboard/workbook")
+def get_dashboard_workbook_multi(
+    geoids: str = Query(..., description="Comma-separated geoids"),
+    start_year: int = Query(2010, ge=2010, le=2024),
+    end_year: int = Query(2024, ge=2010, le=2024),
+    charts: Optional[str] = Query(None, description="Comma-separated chart names; omit for all charts"),
+):
+    """Chart-bearing workbook for Comparative Analysis / Regional Analysis
+    'Separated' -- one dashboard per geoid, re-run the same way
+    MultiGeoDashboard.tsx already fetches them (N parallel calls to
+    get_full_dashboard), just server-side instead of client-side fan-out."""
+    geoid_list = [g.strip() for g in geoids.split(",") if g.strip()]
+    if not geoid_list:
+        raise HTTPException(status_code=400, detail="geoids must contain at least one geoid")
+    if start_year > end_year:
+        raise HTTPException(status_code=400, detail="start_year must be <= end_year")
+    geo_labels = _geo_labels(geoid_list)
+    dashboard_by_geoid = {
+        g: _filter_dashboard(dd.get_full_dashboard(g, start_year, end_year, engine=engine), charts)
+        for g in geoid_list
+    }
+    wb = dex.build_multi_geo_dashboard_workbook(dashboard_by_geoid, geo_labels, dex.acs_chart_title)
+    return _workbook_response(wb, "Comparison.xlsx")
+
+
 # NB: registered before /dashboard/{geoid} -- FastAPI matches routes in
 # registration order, and both patterns match a single path segment after
 # /dashboard/, so /dashboard/region would otherwise be swallowed by the
@@ -202,6 +232,42 @@ def get_dashboard(
         return {name: dd.CHART_FUNCTIONS[name](engine, geoid, start_year, end_year) for name in names}
 
     return dd.get_full_dashboard(geoid, start_year, end_year, engine=engine)
+
+
+# NB: registered before /dashboard/{geoid}/workbook -- same precedence
+# issue as /dashboard/region vs /dashboard/{geoid} above.
+@data_router.get("/dashboard/region/workbook")
+def get_dashboard_region_workbook(
+    geoids: str = Query(..., description="Comma-separated geoids to aggregate"),
+    start_year: int = Query(2010, ge=2010, le=2024),
+    end_year: int = Query(2024, ge=2010, le=2024),
+    charts: Optional[str] = Query(None, description="Comma-separated chart names; omit for all charts"),
+):
+    geoid_list = [g.strip() for g in geoids.split(",") if g.strip()]
+    if not geoid_list:
+        raise HTTPException(status_code=400, detail="geoids must contain at least one geoid")
+    if start_year > end_year:
+        raise HTTPException(status_code=400, detail="start_year must be <= end_year")
+    for g in geoid_list:
+        _require_geography(g)
+    dashboard = _filter_dashboard(dd.get_full_dashboard_region(geoid_list, start_year, end_year, engine=engine), charts)
+    wb = dex.build_dashboard_workbook(dashboard, dex.acs_chart_title)
+    return _workbook_response(wb, "Regional Analysis.xlsx")
+
+
+@data_router.get("/dashboard/{geoid}/workbook")
+def get_dashboard_workbook(
+    geoid: str,
+    start_year: int = Query(2010, ge=2010, le=2024),
+    end_year: int = Query(2024, ge=2010, le=2024),
+    charts: Optional[str] = Query(None, description="Comma-separated chart names; omit for all charts"),
+):
+    _require_geography(geoid)
+    if start_year > end_year:
+        raise HTTPException(status_code=400, detail="start_year must be <= end_year")
+    dashboard = _filter_dashboard(dd.get_full_dashboard(geoid, start_year, end_year, engine=engine), charts)
+    wb = dex.build_dashboard_workbook(dashboard, dex.acs_chart_title)
+    return _workbook_response(wb, "Dashboard.xlsx")
 
 
 @data_router.get("/dashboard/charts/list")
@@ -348,6 +414,32 @@ def _parse_sectors(sectors: Optional[str]) -> list:
 
 
 # NB: registered before /bls/dashboard/{geoid} -- same route-ordering
+# precedence issue as /dashboard/workbook vs /dashboard/{geoid} above.
+@data_router.get("/bls/dashboard/workbook")
+def get_bls_dashboard_workbook_multi(
+    geoids: str = Query(..., description="Comma-separated county geoids"),
+    start_year: int = Query(2010, ge=2010),
+    end_year: int = Query(2024, ge=2010),
+    sectors: Optional[str] = Query(None, description="Comma-separated NAICS sector codes; omit for all 20"),
+    charts: Optional[str] = Query(None, description="Comma-separated chart names; omit for all charts"),
+):
+    geoid_list = [g.strip() for g in geoids.split(",") if g.strip()]
+    if not geoid_list:
+        raise HTTPException(status_code=400, detail="geoids must contain at least one geoid")
+    if start_year > end_year:
+        raise HTTPException(status_code=400, detail="start_year must be <= end_year")
+    sector_list = _parse_sectors(sectors)
+    geo_labels = _geo_labels(geoid_list)
+    dashboard_by_geoid = {
+        g: _filter_dashboard(bls.get_full_dashboard(g, start_year, end_year, sector_list, engine=engine), charts)
+        for g in geoid_list
+    }
+    title_for = lambda k: dex.bls_chart_title(k, bls.NAICS_SECTORS)
+    wb = dex.build_multi_geo_dashboard_workbook(dashboard_by_geoid, geo_labels, title_for)
+    return _workbook_response(wb, "BLS Comparison.xlsx")
+
+
+# NB: registered before /bls/dashboard/{geoid} -- same route-ordering
 # precedence issue as /dashboard/region vs /dashboard/{geoid}.
 @data_router.get("/bls/dashboard/region")
 def get_bls_dashboard_region(
@@ -379,6 +471,48 @@ def get_bls_dashboard(
         raise HTTPException(status_code=400, detail="start_year must be <= end_year")
     sector_list = _parse_sectors(sectors)
     return bls.get_full_dashboard(geoid, start_year, end_year, sector_list, engine=engine)
+
+
+# NB: registered before /bls/dashboard/{geoid}/workbook -- same precedence
+# issue as /bls/dashboard/region vs /bls/dashboard/{geoid} above.
+@data_router.get("/bls/dashboard/region/workbook")
+def get_bls_dashboard_region_workbook(
+    geoids: str = Query(..., description="Comma-separated county geoids to aggregate"),
+    start_year: int = Query(2010, ge=2010),
+    end_year: int = Query(2024, ge=2010),
+    sectors: Optional[str] = Query(None, description="Comma-separated NAICS sector codes; omit for all 20"),
+    charts: Optional[str] = Query(None, description="Comma-separated chart names; omit for all charts"),
+):
+    geoid_list = [g.strip() for g in geoids.split(",") if g.strip()]
+    if not geoid_list:
+        raise HTTPException(status_code=400, detail="geoids must contain at least one geoid")
+    if start_year > end_year:
+        raise HTTPException(status_code=400, detail="start_year must be <= end_year")
+    for g in geoid_list:
+        _require_geography(g)
+    sector_list = _parse_sectors(sectors)
+    dashboard = _filter_dashboard(bls.get_full_dashboard_region(geoid_list, start_year, end_year, sector_list, engine=engine), charts)
+    title_for = lambda k: dex.bls_chart_title(k, bls.NAICS_SECTORS)
+    wb = dex.build_dashboard_workbook(dashboard, title_for)
+    return _workbook_response(wb, "BLS Regional Analysis.xlsx")
+
+
+@data_router.get("/bls/dashboard/{geoid}/workbook")
+def get_bls_dashboard_workbook(
+    geoid: str,
+    start_year: int = Query(2010, ge=2010),
+    end_year: int = Query(2024, ge=2010),
+    sectors: Optional[str] = Query(None, description="Comma-separated NAICS sector codes; omit for all 20"),
+    charts: Optional[str] = Query(None, description="Comma-separated chart names; omit for all charts"),
+):
+    _require_geography(geoid)
+    if start_year > end_year:
+        raise HTTPException(status_code=400, detail="start_year must be <= end_year")
+    sector_list = _parse_sectors(sectors)
+    dashboard = _filter_dashboard(bls.get_full_dashboard(geoid, start_year, end_year, sector_list, engine=engine), charts)
+    title_for = lambda k: dex.bls_chart_title(k, bls.NAICS_SECTORS)
+    wb = dex.build_dashboard_workbook(dashboard, title_for)
+    return _workbook_response(wb, "BLS Dashboard.xlsx")
 
 
 @data_router.get("/bls/dashboard/charts/list")
@@ -585,6 +719,36 @@ def _require_geography(geoid: str, return_row: bool = False):
         raise HTTPException(status_code=404, detail=f"Unknown geoid: {geoid}")
     if return_row:
         return dict(row._mapping)
+
+
+def _filter_dashboard(dashboard: dict, charts: Optional[str]) -> dict:
+    """Applies the same optional 'charts' selection every workbook route
+    accepts (mirrors /dashboard/{geoid}'s existing charts= filter) --
+    DownloadWorkbookButton's checklist UX needs to be able to request a
+    subset without the backend re-deriving anything, so this just filters
+    the already-fetched dashboard dict rather than re-querying selectively.
+    Valid names are the dashboard's own keys, not a separately-passed
+    static list -- a region dashboard's keys already exclude the 4 true-
+    median charts, and BLS's per-sector trend keys are dynamic, so the
+    dashboard itself is the only reliable source of what's actually valid
+    for this particular request."""
+    if not charts:
+        return dashboard
+    names = [c.strip() for c in charts.split(",")]
+    unknown = [n for n in names if n not in dashboard]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown chart(s): {unknown}")
+    return {name: dashboard[name] for name in names}
+
+
+def _geo_labels(geoid_list: list) -> dict:
+    """{geoid: display_name} for a multi-geoid workbook's sheet/chart
+    labels -- falls back to the raw geoid for any geoid missing a row
+    (shouldn't happen since every caller already validated the geoids, but
+    a label always beats a KeyError)."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT geoid, display_name FROM geography WHERE geoid = ANY(:geoids)"), {"geoids": geoid_list})
+        return {r.geoid: r.display_name for r in rows}
 
 
 # ============================================================

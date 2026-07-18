@@ -8,8 +8,7 @@ import LineChartCard from '../components/charts/LineChartCard'
 import StackedBarChartCard from '../components/charts/StackedBarChartCard'
 import BinBarChartCard from '../components/charts/BinBarChartCard'
 import MultiGeoDashboard from './MultiGeoDashboard'
-import { dashboardSheets } from '../lib/download'
-import DownloadSheetsButton from '../components/DownloadSheetsButton'
+import DownloadWorkbookButton from '../components/DownloadWorkbookButton'
 
 const MAX_REGION_SIZE = 50
 const MIN_YEAR = 2010
@@ -213,9 +212,13 @@ function AggregatedDashboard({ geoids, onBack }: { geoids: string[]; onBack: () 
       )}
 
       {charts && (
-        <DownloadSheetsButton
+        <DownloadWorkbookButton
           filename="Regional Analysis.xlsx"
-          sheets={dashboardSheets(charts, (key) => CHART_META[key]?.title ?? key, viewMode)}
+          chartKeys={Object.keys(charts)}
+          titleFor={(key) => CHART_META[key]?.title ?? key}
+          fetchWorkbook={(selectedKeys) =>
+            api.downloadDashboardRegionWorkbook(geoids, { start_year: startYear, end_year: endYear, charts: selectedKeys.join(',') })
+          }
         />
       )}
     </div>

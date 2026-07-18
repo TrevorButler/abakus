@@ -5,8 +5,7 @@ import { CHART_META, type ChartViewMode } from '../lib/chartMeta'
 import LineChartCard from '../components/charts/LineChartCard'
 import StackedBarChartCard from '../components/charts/StackedBarChartCard'
 import BinBarChartCard from '../components/charts/BinBarChartCard'
-import { dashboardSheets } from '../lib/download'
-import DownloadSheetsButton from '../components/DownloadSheetsButton'
+import DownloadWorkbookButton from '../components/DownloadWorkbookButton'
 
 const MIN_YEAR = 2010
 const MAX_YEAR = 2024
@@ -103,9 +102,13 @@ export default function Dashboard() {
       )}
 
       {dashboard && (
-        <DownloadSheetsButton
+        <DownloadWorkbookButton
           filename={`${geo?.display_name ?? geoid}.xlsx`}
-          sheets={dashboardSheets(dashboard, (key) => CHART_META[key]?.title ?? key, viewMode)}
+          chartKeys={Object.keys(dashboard)}
+          titleFor={(key) => CHART_META[key]?.title ?? key}
+          fetchWorkbook={(selectedKeys) =>
+            api.downloadDashboardWorkbook(geoid, { start_year: startYear, end_year: endYear, charts: selectedKeys.join(',') })
+          }
         />
       )}
     </div>

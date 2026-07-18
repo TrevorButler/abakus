@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, NAICS_SECTORS, type BlsDashboardResult, type GeographySummary, type GeoType, type LineChart } from '../lib/api'
-import { blsChartMeta, blsDashboardSheets } from '../lib/blsChartMeta'
+import { blsChartMeta } from '../lib/blsChartMeta'
 import LineChartCard from '../components/charts/LineChartCard'
 import MultiGeoLineChartCard from '../components/charts/MultiGeoLineChartCard'
 import SectorToggles from '../components/SectorToggles'
-import DownloadSheetsButton from '../components/DownloadSheetsButton'
+import DownloadWorkbookButton from '../components/DownloadWorkbookButton'
 
 const MIN_YEAR = 2014 // QCEW's bulk open-data API only serves a rolling window, not back to 2010
 const MAX_YEAR = 2025
@@ -94,9 +94,18 @@ export default function BlsDashboard() {
       )}
 
       {dashboard && (
-        <DownloadSheetsButton
+        <DownloadWorkbookButton
           filename={`${geo?.display_name ?? geoid} - BLS.xlsx`}
-          sheets={blsDashboardSheets(dashboard, (key) => blsChartMeta(key).title)}
+          chartKeys={Object.keys(dashboard)}
+          titleFor={(key) => blsChartMeta(key).title}
+          fetchWorkbook={(selectedKeys) =>
+            api.bls.downloadDashboardWorkbook(geoid, {
+              start_year: startYear,
+              end_year: endYear,
+              sectors: sectors.join(','),
+              charts: selectedKeys.join(','),
+            })
+          }
         />
       )}
     </div>

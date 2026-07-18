@@ -332,6 +332,25 @@ async function postFormBlob(path: string, formData: FormData): Promise<Blob> {
   return (await postForm(path, formData)).blob()
 }
 
+// GET counterpart to postFormBlob -- the ACS/BLS "Download Data" retrofit's
+// workbook routes are plain query-param GETs (mirroring their JSON
+// counterparts exactly, see api.py), not file uploads, so this doesn't go
+// through postForm's FormData path.
+async function getBlob(path: string, params?: Record<string, string | number | undefined>): Promise<Blob> {
+  const url = new URL(`${API_BASE}${path}`, window.location.origin)
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined) url.searchParams.set(key, String(value))
+    }
+  }
+  const res = await fetch(url.toString(), { credentials: 'include' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail ?? `Request failed: ${res.status}`)
+  }
+  return res.blob()
+}
+
 async function postFormJson<T>(path: string, formData: FormData): Promise<T> {
   return (await postForm(path, formData)).json()
 }
@@ -367,6 +386,20 @@ export const api = {
   getDashboardRegion: (geoids: string[], params: { start_year: number; end_year: number }) =>
     get<{ excluded_charts: string[]; charts: DashboardResult }>('/dashboard/region', { ...params, geoids: geoids.join(',') }),
 
+  // Chart-bearing workbook downloads -- server-side openpyxl export
+  // (dashboard_excel_export.py), replacing the old client-side data-only
+  // SheetJS export. Same query params as the JSON routes above (plus an
+  // optional charts= selection, mirroring /dashboard/{geoid}'s existing
+  // filter), so the export always matches what's on screen.
+  downloadDashboardWorkbook: (geoid: string, params: { start_year: number; end_year: number; charts?: string }) =>
+    getBlob(`/dashboard/${geoid}/workbook`, params),
+
+  downloadDashboardRegionWorkbook: (geoids: string[], params: { start_year: number; end_year: number; charts?: string }) =>
+    getBlob('/dashboard/region/workbook', { ...params, geoids: geoids.join(',') }),
+
+  downloadDashboardWorkbookMulti: (geoids: string[], params: { start_year: number; end_year: number; charts?: string }) =>
+    getBlob('/dashboard/workbook', { ...params, geoids: geoids.join(',') }),
+
   getHousingDemand: (geoid: string, params: HousingDemandParams) =>
     get<HousingDemandResult>(`/housing-demand/${geoid}`, { ...params }),
 
@@ -399,6 +432,19 @@ export const api = {
 
     getDashboardRegion: (geoids: string[], params: { start_year: number; end_year: number; sectors?: string }) =>
       get<BlsDashboardResult>('/bls/dashboard/region', { ...params, geoids: geoids.join(',') }),
+
+    downloadDashboardWorkbook: (geoid: string, params: { start_year: number; end_year: number; sectors?: string; charts?: string }) =>
+      getBlob(`/bls/dashboard/${geoid}/workbook`, params),
+
+    downloadDashboardRegionWorkbook: (
+      geoids: string[],
+      params: { start_year: number; end_year: number; sectors?: string; charts?: string }
+    ) => getBlob('/bls/dashboard/region/workbook', { ...params, geoids: geoids.join(',') }),
+
+    downloadDashboardWorkbookMulti: (
+      geoids: string[],
+      params: { start_year: number; end_year: number; sectors?: string; charts?: string }
+    ) => getBlob('/bls/dashboard/workbook', { ...params, geoids: geoids.join(',') }),
 
     listCharts: () => get<string[]>('/bls/dashboard/charts/list'),
 

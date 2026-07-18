@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { api, type BlsDashboardResult, type LineChart } from '../lib/api'
-import { blsChartMeta, blsMultiGeoDashboardSheets } from '../lib/blsChartMeta'
+import { blsChartMeta } from '../lib/blsChartMeta'
 import MultiGeoLineChartCard from '../components/charts/MultiGeoLineChartCard'
 import MultiGeoSectorLineChartCard from '../components/charts/MultiGeoSectorLineChartCard'
-import DownloadSheetsButton from '../components/DownloadSheetsButton'
+import DownloadWorkbookButton from '../components/DownloadWorkbookButton'
 
 const MIN_YEAR = 2014 // QCEW's bulk open-data API only serves a rolling window, not back to 2010
 const MAX_YEAR = 2025
@@ -100,9 +100,16 @@ export default function BlsMultiGeoDashboard({ geographies, sectors }: Props) {
       )}
 
       {!loading && chartNames.length > 0 && (
-        <DownloadSheetsButton
+        <DownloadWorkbookButton
           filename="BLS Comparison.xlsx"
-          sheets={blsMultiGeoDashboardSheets(geographies, dataByGeoid, chartNames, (key) => blsChartMeta(key).title)}
+          chartKeys={chartNames}
+          titleFor={(key) => blsChartMeta(key).title}
+          fetchWorkbook={(selectedKeys) =>
+            api.bls.downloadDashboardWorkbookMulti(
+              geographies.map((g) => g.geoid),
+              { start_year: startYear, end_year: endYear, sectors: sectors.join(','), charts: selectedKeys.join(',') }
+            )
+          }
         />
       )}
     </div>

@@ -1,12 +1,10 @@
 import * as XLSX from 'xlsx'
-import type { ChartResult } from './api'
-import type { ChartViewMode } from './chartMeta'
 
-// Shared by every chart's per-chart download button and each dashboard's
-// "Download Data" workbook button. Everything happens client-side against
-// data already sitting in the page -- no backend endpoint needed, since
-// the browser already has the exact numbers being rendered (respecting
-// whatever %/# view mode is currently active).
+// Shared by every chart's per-chart CSV download button, plus
+// HousingDemand.tsx/BlsOfficeDemand.tsx's hand-built "Download Data"
+// workbooks (those two pages aren't chart-union-shaped, so they don't go
+// through DownloadWorkbookButton's server-side export). Everything here
+// happens client-side against data already sitting in the page.
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -145,73 +143,6 @@ export function multiGeoCategoriesRows(
   return rows
 }
 
-// Single-geo and Regional-Aggregated dashboards share the exact same
-// DashboardResult shape, so both can build their "Download Data" workbook
-// through this one function.
-export function dashboardSheets(
-  dashboard: Record<string, ChartResult>,
-  titleFor: (key: string) => string,
-  viewMode: ChartViewMode
-): SheetData[] {
-  const showCount = viewMode === 'count'
-  return Object.entries(dashboard).map(([key, chart]) => {
-    const title = titleFor(key)
-    if (chart.chart_type === 'line') return { name: title, rows: seriesRows(title, chart.series) }
-    const source = showCount ? chart.raw_categories : chart.categories
-    if (chart.chart_type === 'bar') return { name: title, rows: binRows(source) }
-    return { name: title, rows: categoriesRows(source) }
-  })
-}
-
-// Comparative Analysis / Regional Analysis "Separated" -- one sheet per
-// chart, combining every geography (long-format for category breakdowns).
-// Unlike the on-screen small-multiples view (which restricts category
-// breakdowns to two endpoint years for readability), the export uses every
-// year actually present in the data -- that visual constraint doesn't
-// apply to a spreadsheet.
-export function multiGeoDashboardSheets(
-  geographies: { geoid: string; label: string }[],
-  dataByGeoid: Record<string, Record<string, ChartResult>>,
-  chartNames: string[],
-  titleFor: (key: string) => string,
-  viewMode: ChartViewMode
-): SheetData[] {
-  const showCount = viewMode === 'count'
-  const sheets: SheetData[] = []
-
-  for (const key of chartNames) {
-    const firstResult = dataByGeoid[geographies[0]?.geoid]?.[key]
-    if (!firstResult) continue
-    const title = titleFor(key)
-
-    if (firstResult.chart_type === 'line') {
-      const seriesByGeoid: Record<string, Record<string, number>> = {}
-      geographies.forEach((g) => {
-        const c = dataByGeoid[g.geoid]?.[key]
-        seriesByGeoid[g.geoid] = c?.chart_type === 'line' ? c.series : {}
-      })
-      sheets.push({ name: title, rows: multiGeoSeriesRows(geographies, seriesByGeoid) })
-      continue
-    }
-
-    const categoriesByGeoid: Record<string, Record<string, Record<string, number>>> = {}
-    geographies.forEach((g) => {
-      const c = dataByGeoid[g.geoid]?.[key]
-      categoriesByGeoid[g.geoid] = c && c.chart_type !== 'line' ? (showCount ? c.raw_categories : c.categories) : {}
-    })
-
-    if (firstResult.chart_type === 'bar') {
-      sheets.push({ name: title, rows: multiGeoBinRows(geographies, categoriesByGeoid) })
-      continue
-    }
-
-    const allYears = new Set<string>()
-    geographies.forEach((g) => Object.keys(categoriesByGeoid[g.geoid] ?? {}).forEach((y) => allYears.add(y)))
-    sheets.push({ name: title, rows: multiGeoCategoriesRows(geographies, categoriesByGeoid, Array.from(allYears).sort()) })
-  }
-
-  return sheets
-}
 
 // Wide format: one row per geography, one column per bin (each geography's
 // own most-recent year, same convention as MultiGeoBinBarChartCard).
