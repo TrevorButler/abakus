@@ -217,7 +217,12 @@ function AggregatedDashboard({ geoids, onBack }: { geoids: string[]; onBack: () 
           chartKeys={Object.keys(charts)}
           titleFor={(key) => CHART_META[key]?.title ?? key}
           fetchWorkbook={(selectedKeys) =>
-            api.downloadDashboardRegionWorkbook(geoids, { start_year: startYear, end_year: endYear, charts: selectedKeys.join(',') })
+            api.downloadDashboardRegionWorkbook(geoids, {
+              start_year: startYear,
+              end_year: endYear,
+              charts: selectedKeys.join(','),
+              view_mode: viewMode,
+            })
           }
         />
       )}

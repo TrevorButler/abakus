@@ -138,7 +138,7 @@ def _write_categories(ws, title: str, categories: dict, kind: str):
     _add_block(ws, 1, title, labels, rows, kind)
 
 
-def _write_chart_sheet(wb: Workbook, used_names: set, title: str, chart: dict):
+def _write_chart_sheet(wb: Workbook, used_names: set, title: str, chart: dict, view_mode: str = "percent"):
     ws = wb.create_sheet(unique_sheet_name(title, used_names))
     chart_type = chart["chart_type"]
     if chart_type == "line":
@@ -146,23 +146,33 @@ def _write_chart_sheet(wb: Workbook, used_names: set, title: str, chart: dict):
     elif chart_type == "multi_line":
         _write_multi_line(ws, title, chart["series_by_label"])
     elif chart_type in ("stacked_bar", "bar"):
-        _write_categories(ws, title, chart["categories"], chart_type)
+        # raw_categories (counts) vs categories (percent shares) -- mirrors
+        # the frontend's %/# toggle (ChartViewMode) exactly, since these are
+        # the same two fields every category_breakdown()-shaped chart
+        # already carries specifically so the export doesn't need a second
+        # request. Doesn't apply to line/multi_line charts (those are
+        # already a single count/dollar/year value, not a share of
+        # something), matching the on-screen toggle's own scope.
+        source = chart["raw_categories"] if view_mode == "count" else chart["categories"]
+        _write_categories(ws, title, source, chart_type)
 
 
-def build_dashboard_workbook(dashboard: dict, title_for) -> Workbook:
+def build_dashboard_workbook(dashboard: dict, title_for, view_mode: str = "percent") -> Workbook:
     """dashboard: {chart_key: ChartResult} (single geoid or aggregated
-    region -- both share the same shape). title_for(key) -> str."""
+    region -- both share the same shape). title_for(key) -> str. view_mode:
+    'percent' or 'count', matching the on-screen %/# toggle (ACS only --
+    BLS's charts are all line/multi_line, which this doesn't affect)."""
     wb = Workbook()
     wb.remove(wb.active)
     used_names: set = set()
     for key, chart in dashboard.items():
         if not chart:
             continue
-        _write_chart_sheet(wb, used_names, title_for(key), chart)
+        _write_chart_sheet(wb, used_names, title_for(key), chart, view_mode)
     return wb
 
 
-def build_multi_geo_dashboard_workbook(dashboard_by_geoid: dict, geo_labels: dict, title_for) -> Workbook:
+def build_multi_geo_dashboard_workbook(dashboard_by_geoid: dict, geo_labels: dict, title_for, view_mode: str = "percent") -> Workbook:
     """dashboard_by_geoid: {geoid: {chart_key: ChartResult}} (one dashboard
     per geography, e.g. Comparative Analysis / Regional Analysis
     "Separated"). geo_labels: {geoid: display label}. title_for(key) -> str.
@@ -211,9 +221,10 @@ def build_multi_geo_dashboard_workbook(dashboard_by_geoid: dict, geo_labels: dic
                 years = sorted({y for s in chart["series_by_label"].values() for y in s})
                 rows = [[y] + [chart["series_by_label"][l].get(y) for l in labels] for y in years]
             else:
-                years = sorted(chart["categories"])
-                labels = list(dict.fromkeys(label for y in years for label in chart["categories"][y]))
-                rows = [[y] + [chart["categories"][y].get(l) for l in labels] for y in years]
+                source = chart["raw_categories"] if view_mode == "count" else chart["categories"]
+                years = sorted(source)
+                labels = list(dict.fromkeys(label for y in years for label in source[y]))
+                rows = [[y] + [source[y].get(l) for l in labels] for y in years]
             row_cursor = _add_block(ws, row_cursor, block_title, labels, rows, "line" if chart_type == "multi_line" else chart_type)
 
     return wb

@@ -123,7 +123,7 @@ export default function MultiGeoDashboard({ geographies }: Props) {
           fetchWorkbook={(selectedKeys) =>
             api.downloadDashboardWorkbookMulti(
               geographies.map((g) => g.geoid),
-              { start_year: startYear, end_year: endYear, charts: selectedKeys.join(',') }
+              { start_year: startYear, end_year: endYear, charts: selectedKeys.join(','), view_mode: viewMode }
             )
           }
         />

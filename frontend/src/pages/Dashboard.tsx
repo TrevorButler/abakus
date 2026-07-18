@@ -107,7 +107,12 @@ export default function Dashboard() {
           chartKeys={Object.keys(dashboard)}
           titleFor={(key) => CHART_META[key]?.title ?? key}
           fetchWorkbook={(selectedKeys) =>
-            api.downloadDashboardWorkbook(geoid, { start_year: startYear, end_year: endYear, charts: selectedKeys.join(',') })
+            api.downloadDashboardWorkbook(geoid, {
+              start_year: startYear,
+              end_year: endYear,
+              charts: selectedKeys.join(','),
+              view_mode: viewMode,
+            })
           }
         />
       )}

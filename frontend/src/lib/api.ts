@@ -1,6 +1,8 @@
 // Typed client for the FastAPI backend. Vite proxies /api -> the local
 // uvicorn server (see vite.config.ts), so no base URL needed here.
 
+import type { ChartViewMode } from './chartMeta'
+
 export type GeoType = 'place' | 'county'
 
 export interface GeographySummary {
@@ -390,15 +392,23 @@ export const api = {
   // (dashboard_excel_export.py), replacing the old client-side data-only
   // SheetJS export. Same query params as the JSON routes above (plus an
   // optional charts= selection, mirroring /dashboard/{geoid}'s existing
-  // filter), so the export always matches what's on screen.
-  downloadDashboardWorkbook: (geoid: string, params: { start_year: number; end_year: number; charts?: string }) =>
-    getBlob(`/dashboard/${geoid}/workbook`, params),
+  // filter, and view_mode so category charts export the same percent/count
+  // shares currently shown on screen), so the export always matches what's
+  // on screen.
+  downloadDashboardWorkbook: (
+    geoid: string,
+    params: { start_year: number; end_year: number; charts?: string; view_mode?: ChartViewMode }
+  ) => getBlob(`/dashboard/${geoid}/workbook`, params),
 
-  downloadDashboardRegionWorkbook: (geoids: string[], params: { start_year: number; end_year: number; charts?: string }) =>
-    getBlob('/dashboard/region/workbook', { ...params, geoids: geoids.join(',') }),
+  downloadDashboardRegionWorkbook: (
+    geoids: string[],
+    params: { start_year: number; end_year: number; charts?: string; view_mode?: ChartViewMode }
+  ) => getBlob('/dashboard/region/workbook', { ...params, geoids: geoids.join(',') }),
 
-  downloadDashboardWorkbookMulti: (geoids: string[], params: { start_year: number; end_year: number; charts?: string }) =>
-    getBlob('/dashboard/workbook', { ...params, geoids: geoids.join(',') }),
+  downloadDashboardWorkbookMulti: (
+    geoids: string[],
+    params: { start_year: number; end_year: number; charts?: string; view_mode?: ChartViewMode }
+  ) => getBlob('/dashboard/workbook', { ...params, geoids: geoids.join(',') }),
 
   getHousingDemand: (geoid: string, params: HousingDemandParams) =>
     get<HousingDemandResult>(`/housing-demand/${geoid}`, { ...params }),

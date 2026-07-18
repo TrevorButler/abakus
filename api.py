@@ -170,6 +170,7 @@ def get_dashboard_workbook_multi(
     start_year: int = Query(2010, ge=2010, le=2024),
     end_year: int = Query(2024, ge=2010, le=2024),
     charts: Optional[str] = Query(None, description="Comma-separated chart names; omit for all charts"),
+    view_mode: Literal["percent", "count"] = Query("percent", description="Category charts as percent shares or raw counts"),
 ):
     """Chart-bearing workbook for Comparative Analysis / Regional Analysis
     'Separated' -- one dashboard per geoid, re-run the same way
@@ -185,7 +186,7 @@ def get_dashboard_workbook_multi(
         g: _filter_dashboard(dd.get_full_dashboard(g, start_year, end_year, engine=engine), charts)
         for g in geoid_list
     }
-    wb = dex.build_multi_geo_dashboard_workbook(dashboard_by_geoid, geo_labels, dex.acs_chart_title)
+    wb = dex.build_multi_geo_dashboard_workbook(dashboard_by_geoid, geo_labels, dex.acs_chart_title, view_mode)
     return _workbook_response(wb, "Comparison.xlsx")
 
 
@@ -242,6 +243,7 @@ def get_dashboard_region_workbook(
     start_year: int = Query(2010, ge=2010, le=2024),
     end_year: int = Query(2024, ge=2010, le=2024),
     charts: Optional[str] = Query(None, description="Comma-separated chart names; omit for all charts"),
+    view_mode: Literal["percent", "count"] = Query("percent", description="Category charts as percent shares or raw counts"),
 ):
     geoid_list = [g.strip() for g in geoids.split(",") if g.strip()]
     if not geoid_list:
@@ -251,7 +253,7 @@ def get_dashboard_region_workbook(
     for g in geoid_list:
         _require_geography(g)
     dashboard = _filter_dashboard(dd.get_full_dashboard_region(geoid_list, start_year, end_year, engine=engine), charts)
-    wb = dex.build_dashboard_workbook(dashboard, dex.acs_chart_title)
+    wb = dex.build_dashboard_workbook(dashboard, dex.acs_chart_title, view_mode)
     return _workbook_response(wb, "Regional Analysis.xlsx")
 
 
@@ -261,12 +263,13 @@ def get_dashboard_workbook(
     start_year: int = Query(2010, ge=2010, le=2024),
     end_year: int = Query(2024, ge=2010, le=2024),
     charts: Optional[str] = Query(None, description="Comma-separated chart names; omit for all charts"),
+    view_mode: Literal["percent", "count"] = Query("percent", description="Category charts as percent shares or raw counts"),
 ):
     _require_geography(geoid)
     if start_year > end_year:
         raise HTTPException(status_code=400, detail="start_year must be <= end_year")
     dashboard = _filter_dashboard(dd.get_full_dashboard(geoid, start_year, end_year, engine=engine), charts)
-    wb = dex.build_dashboard_workbook(dashboard, dex.acs_chart_title)
+    wb = dex.build_dashboard_workbook(dashboard, dex.acs_chart_title, view_mode)
     return _workbook_response(wb, "Dashboard.xlsx")
 
 
