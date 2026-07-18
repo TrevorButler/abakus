@@ -1,13 +1,18 @@
 # Runtime dependencies for the deployed API service (api.py +
 # demographics_dashboard.py + housing_demand_projections.py +
-# comparative_communities.py + auth.py + app_users.py) only -- these files'
-# imports are the actual production surface. pandas/geopandas/scikit-learn/
-# numpy are used
-# by the one-time local ETL/geo-asset-building scripts (etl_acs_pull.py,
+# comparative_communities.py + auth.py + app_users.py + the CoStar/SmartRE
+# upload-clean-export modules) only -- these files' imports are the actual
+# production surface. pandas/geopandas/scikit-learn/numpy are used by the
+# one-time local ETL/geo-asset-building scripts (etl_acs_pull.py,
 # build_geo_assets.py, resolve_geography.py, build_geography_neighbors.py),
 # not by anything that runs in production, so they're deliberately left
 # out of this file -- install them separately in a dev environment if
 # re-running those scripts.
+#
+# openpyxl IS a live-request dependency (not ETL-only): the CoStar/SmartRE
+# modules read uploaded workbooks and write native, editable Excel charts
+# at request time -- the only viable way to get real chart objects into an
+# .xlsx without a paid SheetJS tier (see costar_heartbeat.py's docstring).
 fastapi==0.139.0
 uvicorn==0.51.0
 sqlalchemy==2.0.51
@@ -15,3 +20,5 @@ psycopg2-binary==2.9.12
 authlib==1.7.2
 itsdangerous==2.2.0
 httpx==0.28.1
+openpyxl==3.1.5
+python-multipart==0.0.20

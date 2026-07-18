@@ -34,7 +34,7 @@ export default function PumaHouseholdSummary() {
   return (
     <div className="flex-1 flex flex-col items-center px-6 py-12 gap-8">
       <div className="text-center">
-        <h1 className="text-3xl font-medium text-abakus-charcoal mb-2">PUMA Household Averages</h1>
+        <h1 className="text-3xl font-medium text-abakus-charcoal mb-2">Population & Children by Housing Type</h1>
         <p className="text-abakus-light-grey">Click a PUMA on the map to see its household size and school-aged children averages.</p>
       </div>
 

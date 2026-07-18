@@ -15,7 +15,7 @@ export default function PumsLanding() {
       >
         <div className="h-2 bg-abakus-green" />
         <div className="p-6 flex flex-col gap-2">
-          <h2 className="text-xl font-medium text-abakus-charcoal">Household Averages</h2>
+          <h2 className="text-xl font-medium text-abakus-charcoal">Population & Children by Housing Type</h2>
           <p className="text-abakus-light-grey text-sm leading-relaxed">
             Average household size and school-aged children per unit, by unit type and bedroom count.
           </p>

@@ -19,6 +19,18 @@ const DOMAINS = [
     description: 'Microdata-driven household averages at the Public Use Microdata Area level.',
     color: 'bg-abakus-green',
   },
+  {
+    to: '/costar',
+    title: 'CoStar',
+    description: 'Clean and repackage CoStar exports into ready-to-use workbooks with editable charts.',
+    color: 'bg-abakus-warm-400',
+  },
+  {
+    to: '/smartre',
+    title: 'SmartRE',
+    description: 'Clean SmartRE sales downloads into comp-set price and volume analysis.',
+    color: 'bg-abakus-warm-200',
+  },
 ]
 
 export default function Landing() {

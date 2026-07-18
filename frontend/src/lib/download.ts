@@ -19,6 +19,14 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+// CoStar/SmartRE modules generate their workbook server-side (openpyxl, for
+// native editable charts) and return the raw file -- this just triggers the
+// browser download for a Blob the frontend didn't build itself, same
+// mechanics as triggerDownload above.
+export function downloadFromResponse(blob: Blob, filename: string) {
+  triggerDownload(blob, filename)
+}
+
 function escapeCsvCell(cell: string | number): string {
   const s = String(cell)
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s

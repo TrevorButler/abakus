@@ -14,6 +14,11 @@ import BlsComparative from './pages/BlsComparative'
 import BlsOfficeDemand from './pages/BlsOfficeDemand'
 import PumsLanding from './pages/PumsLanding'
 import PumaHouseholdSummary from './pages/PumaHouseholdSummary'
+import CostarLanding from './pages/CostarLanding'
+import CostarHeartbeat from './pages/CostarHeartbeat'
+import CostarMarketOverview from './pages/CostarMarketOverview'
+import CostarMultifamilyComps from './pages/CostarMultifamilyComps'
+import SmartReSalesAnalysis from './pages/SmartReSalesAnalysis'
 import Admin from './pages/Admin'
 
 function App() {
@@ -37,6 +42,13 @@ function App() {
 
         <Route path="/pums" element={<PumsLanding />} />
         <Route path="/pums/household-summary" element={<PumaHouseholdSummary />} />
+
+        <Route path="/costar" element={<CostarLanding />} />
+        <Route path="/costar/heartbeat" element={<CostarHeartbeat />} />
+        <Route path="/costar/market-overview" element={<CostarMarketOverview />} />
+        <Route path="/costar/multifamily-comps" element={<CostarMultifamilyComps />} />
+
+        <Route path="/smartre" element={<SmartReSalesAnalysis />} />
 
         <Route path="/admin" element={<Admin />} />
       </Routes>

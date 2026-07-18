@@ -315,6 +315,36 @@ async function del<T>(path: string): Promise<T> {
   return handle<T>(res)
 }
 
+// Multipart form POSTs -- the CoStar/SmartRE upload-clean-export modules are
+// the first callers to send files instead of JSON, and the first to expect
+// a raw file (Blob) back instead of parsed JSON. No Content-Type header is
+// set on the request: the browser fills in the multipart boundary itself.
+async function postForm(path: string, formData: FormData): Promise<Response> {
+  const res = await fetch(`${API_BASE}${path}`, { method: 'POST', credentials: 'include', body: formData })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail ?? `Request failed: ${res.status}`)
+  }
+  return res
+}
+
+async function postFormBlob(path: string, formData: FormData): Promise<Blob> {
+  return (await postForm(path, formData)).blob()
+}
+
+async function postFormJson<T>(path: string, formData: FormData): Promise<T> {
+  return (await postForm(path, formData)).json()
+}
+
+// CoStar/SmartRE modules -- upload/clean/export, no persisted data, no
+// dashboard shapes. CostarPropertyClass identifies which upload slot (and
+// which sheet on the output workbook) a Market Overview file belongs to.
+export type CostarPropertyClass = 'multifamily' | 'retail' | 'office' | 'industrial_flex' | 'hospitality'
+
+export interface SmartReSubdivisionsResult {
+  subdivisions: string[]
+}
+
 export const api = {
   listStates: () => get<StateOption[]>('/geography/states'),
 
@@ -375,5 +405,58 @@ export const api = {
 
   pums: {
     getHouseholdSummary: (geoid: string) => get<PumaSummary>(`/pums/household-summary/${geoid}`),
+  },
+
+  costar: {
+    heartbeat: (file: File) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      return postFormBlob('/costar/heartbeat', fd)
+    },
+
+    // One upload slot per property class per market; only classes actually
+    // uploaded are sent -- the backend only builds a tab for a class if at
+    // least one market supplied it, per the confirmed "not required to
+    // upload all of them" requirement.
+    marketOverview: (markets: { name: string; files: Partial<Record<CostarPropertyClass, File>> }[]) => {
+      const fd = new FormData()
+      fd.append('market_count', String(markets.length))
+      markets.forEach((m, i) => {
+        fd.append(`market_${i}_name`, m.name)
+        for (const [cls, file] of Object.entries(m.files)) {
+          if (file) fd.append(`market_${i}_${cls}`, file)
+        }
+      })
+      return postFormBlob('/costar/market-overview', fd)
+    },
+
+    multifamilyComps: (comps: { name: string; file: File }[]) => {
+      const fd = new FormData()
+      comps.forEach((c) => {
+        fd.append('names', c.name)
+        fd.append('files', c.file)
+      })
+      return postFormBlob('/costar/multifamily-comps', fd)
+    },
+  },
+
+  smartre: {
+    // Step 1 of the "Live Environment" flow: upload up to 20 files, get
+    // back the distinct subdivisions present so the user can pick a comp
+    // set before generation.
+    listSubdivisions: (files: File[]) => {
+      const fd = new FormData()
+      files.forEach((f) => fd.append('files', f))
+      return postFormJson<SmartReSubdivisionsResult>('/smartre/subdivisions', fd)
+    },
+
+    // Step 2: the same files (re-sent -- nothing is cached server-side,
+    // these modules are stateless) plus the chosen subdivisions.
+    salesAnalysis: (files: File[], subdivisions: string[]) => {
+      const fd = new FormData()
+      files.forEach((f) => fd.append('files', f))
+      subdivisions.forEach((s) => fd.append('subdivisions', s))
+      return postFormBlob('/smartre/sales-analysis', fd)
+    },
   },
 }

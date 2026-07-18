@@ -30,22 +30,27 @@ export default function ComparativeAnalysis() {
     api.getGeography(primaryGeoid).then(setPrimaryGeo).catch(() => setPrimaryGeo(null))
   }, [primaryGeoid])
 
-  // Suggested top-5 most similar communities pre-populate the comparison
-  // set (per the UX outline), which the user can then adjust below.
-  // suggestionState scopes the candidate pool to one state, or leaves it
-  // open to the full 7-state region when empty.
+  // A new target resets the comparison set -- kept as its own effect (not
+  // combined with the suggestions fetch below) so that changing the state
+  // filter only refreshes the suggestions list without wiping out a
+  // comparison set the user has already built by hand.
+  useEffect(() => {
+    setComparisonGeoids([])
+  }, [primaryGeoid])
+
+  // Suggestions no longer auto-populate the comparison set -- the box
+  // starts empty and the user moves items into it explicitly from the
+  // suggestions/search list on the right. suggestionState scopes the
+  // candidate pool to one state, or leaves it open to the full 7-state
+  // region when empty.
   useEffect(() => {
     if (!primaryGeoid) {
       setSuggestions([])
-      setComparisonGeoids([])
       return
     }
     api
       .getComparativeCommunities(primaryGeoid, { year: SUGGESTION_YEAR, top_n: 5, state_filter: suggestionState || undefined })
-      .then((res) => {
-        setSuggestions(res.results)
-        setComparisonGeoids(res.results.map((r) => r.geoid))
-      })
+      .then((res) => setSuggestions(res.results))
       .catch(() => setSuggestions([]))
   }, [primaryGeoid, suggestionState])
 
@@ -111,12 +116,15 @@ export default function ComparativeAnalysis() {
         ]}
       />
 
-      {/* Desktop-first: once a primary is picked, the picker moves to the
-          left and the comparison-selection tools sit alongside it on the
-          right rather than stacking everything in one narrow column. */}
-      <div className={`w-full ${primaryGeo ? 'max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-start' : 'flex justify-center'}`}>
+      {/* Desktop-first, 3 panels once a primary is picked: target selector
+          stays on the left, the comparison set the user is building sits
+          in a dedicated box in the center, and suggestions + free search
+          move to the right -- clicking an item on the right moves it into
+          the center box; clicking a center-box item removes it. The box
+          starts empty; suggestions no longer auto-populate it. */}
+      <div className={`w-full ${primaryGeo ? 'max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-8 items-start' : 'flex justify-center'}`}>
         <div>
-          <p className="text-sm text-abakus-light-grey mb-2 text-center">Primary geography</p>
+          <p className="text-sm text-abakus-light-grey mb-2 text-center">Target geography</p>
           <GeographyList
             key={`primary-${geoType}`}
             geoType={geoType}
@@ -126,70 +134,98 @@ export default function ComparativeAnalysis() {
         </div>
 
         {primaryGeo && (
-          <div className="flex flex-col gap-4">
-            <div>
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <p className="text-sm text-abakus-light-grey text-center">
-                  Comparison geographies ({comparisonGeoids.length}/{MAX_COMPARISONS}) -- suggested most similar to{' '}
-                  {primaryGeo.display_name} are pre-selected
+          <>
+            <div className="flex flex-col gap-3 items-center">
+              <p className="text-sm text-abakus-light-grey text-center">
+                Comparison set ({comparisonGeoids.length}/{MAX_COMPARISONS})
+              </p>
+              <div className="w-full border border-abakus-charcoal/10 rounded-lg bg-white min-h-[220px] p-2 flex flex-col gap-1">
+                {comparisonGeoids.length === 0 ? (
+                  <p className="text-xs text-abakus-light-grey/70 text-center py-10 px-3">
+                    Choose communities from the list on the right to build your comparison set.
+                  </p>
+                ) : (
+                  comparisonGeoids.map((geoid) => {
+                    const match = suggestions.find((s) => s.geoid === geoid)
+                    const label = match?.display_name ?? geoLabels[geoid] ?? geoid
+                    return (
+                      <button
+                        key={geoid}
+                        type="button"
+                        onClick={() => toggleComparison(geoid)}
+                        title="Remove from comparison set"
+                        className="w-full text-left px-3 py-2 rounded-md text-sm bg-abakus-pink/10 hover:bg-abakus-pink/20 transition-colors flex justify-between items-center gap-2"
+                      >
+                        <span>{label}</span>
+                        <span className="text-abakus-light-grey text-xs shrink-0">Remove</span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDashboard(true)}
+                disabled={comparisonGeoids.length === 0}
+                className="bg-abakus-pink text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40"
+              >
+                Open Dashboard
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div>
+                <p className="text-sm text-abakus-light-grey text-center mb-2">
+                  Suggested most similar to {primaryGeo.display_name}
                 </p>
-              </div>
-              <div className="flex items-center justify-center gap-2 mb-2 text-sm">
-                <label className="flex items-center gap-2 text-abakus-light-grey">
-                  Suggest from
-                  <select
-                    value={suggestionState}
-                    onChange={(e) => setSuggestionState(e.target.value)}
-                    className="border border-abakus-charcoal/20 rounded-lg px-2 py-1 bg-white text-abakus-charcoal"
-                  >
-                    <option value="">All states</option>
-                    {states.map((s) => (
-                      <option key={s.state_abbr} value={s.state_abbr}>
-                        {s.state_name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <ul className="border border-abakus-charcoal/10 rounded-lg bg-white divide-y divide-abakus-charcoal/5">
-                {suggestions.map((s) => (
-                  <li key={s.geoid}>
-                    <button
-                      type="button"
-                      onClick={() => toggleComparison(s.geoid)}
-                      disabled={!comparisonGeoids.includes(s.geoid) && comparisonGeoids.length >= MAX_COMPARISONS}
-                      className={`w-full text-left px-4 py-2 text-sm flex justify-between ${
-                        comparisonGeoids.includes(s.geoid) ? 'bg-abakus-pink/10 font-medium' : 'hover:bg-abakus-cream'
-                      }`}
+                <div className="flex items-center justify-center gap-2 mb-2 text-sm">
+                  <label className="flex items-center gap-2 text-abakus-light-grey">
+                    Suggest from
+                    <select
+                      value={suggestionState}
+                      onChange={(e) => setSuggestionState(e.target.value)}
+                      className="border border-abakus-charcoal/20 rounded-lg px-2 py-1 bg-white text-abakus-charcoal"
                     >
-                      <span>{s.display_name}</span>
-                      <span className="text-abakus-light-grey">#{s.rank}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
+                      <option value="">All states</option>
+                      {states.map((s) => (
+                        <option key={s.state_abbr} value={s.state_abbr}>
+                          {s.state_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <ul className="border border-abakus-charcoal/10 rounded-lg bg-white divide-y divide-abakus-charcoal/5">
+                  {suggestions.map((s) => (
+                    <li key={s.geoid}>
+                      <button
+                        type="button"
+                        onClick={() => toggleComparison(s.geoid)}
+                        disabled={!comparisonGeoids.includes(s.geoid) && comparisonGeoids.length >= MAX_COMPARISONS}
+                        className={`w-full text-left px-4 py-2 text-sm flex justify-between ${
+                          comparisonGeoids.includes(s.geoid) ? 'bg-abakus-pink/10 font-medium' : 'hover:bg-abakus-cream'
+                        }`}
+                      >
+                        <span>{s.display_name}</span>
+                        <span className="text-abakus-light-grey">#{s.rank}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
-            <div>
-              <p className="text-sm text-abakus-light-grey mb-2 text-center">Or search for others</p>
-              <GeographyList
-                key={`comparison-${geoType}`}
-                geoType={geoType}
-                selectedGeoids={comparisonGeoids}
-                onToggle={toggleComparison}
-                maxSelect={MAX_COMPARISONS}
-              />
+              <div>
+                <p className="text-sm text-abakus-light-grey mb-2 text-center">Or search for others</p>
+                <GeographyList
+                  key={`comparison-${geoType}`}
+                  geoType={geoType}
+                  selectedGeoids={comparisonGeoids}
+                  onToggle={toggleComparison}
+                  maxSelect={MAX_COMPARISONS}
+                />
+              </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setShowDashboard(true)}
-              disabled={comparisonGeoids.length === 0}
-              className="bg-abakus-pink text-white font-medium px-6 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 self-center"
-            >
-              Open Dashboard
-            </button>
-          </div>
+          </>
         )}
       </div>
 

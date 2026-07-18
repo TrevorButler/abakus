@@ -15,10 +15,12 @@ bypass, since the OAuth roundtrip needs a real Google client.
 """
 
 import os
+from io import BytesIO
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -30,9 +32,14 @@ import auth
 import bls_dashboard as bls
 import bls_office_demand as bod
 import comparative_communities as cc
+import costar_heartbeat as ch
+import costar_market_overview as cmo
+import costar_multifamily_comps as cmc
 import demographics_dashboard as dd
 import housing_demand_projections as hdp
 import pums_household_averages as pha
+import smartre_sales as ss
+from excel_export import workbook_to_bytes
 
 app = FastAPI(title="Abakus API", version="0.1.0")
 
@@ -446,8 +453,127 @@ def get_pums_household_summary(geoid: str):
 
 
 # ============================================================
+# CoStar / SmartRE (upload -> clean -> download, no DB)
+# ============================================================
+
+@data_router.post("/costar/heartbeat")
+async def post_costar_heartbeat(file: UploadFile):
+    content = await file.read()
+    try:
+        wb = ch.build_heartbeat_workbook(content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _workbook_response(wb, "Heartbeat.xlsx")
+
+
+# market_{i}_name / market_{i}_{class} indexed fields (not a JSON body or a
+# fixed set of UploadFile params) since the market count and which classes
+# each market uploaded both vary per request -- form.get() returns either a
+# plain string (name fields) or an UploadFile-like object (file fields).
+@data_router.post("/costar/market-overview")
+async def post_costar_market_overview(request: Request):
+    form = await request.form()
+    try:
+        market_count = int(form.get("market_count", 0))
+    except (TypeError, ValueError):
+        market_count = 0
+    if market_count == 0:
+        raise HTTPException(status_code=400, detail="At least one market is required")
+
+    markets = []
+    for i in range(market_count):
+        name = form.get(f"market_{i}_name")
+        if not name:
+            continue
+        files = {}
+        for cls in cmo.PROPERTY_CLASSES:
+            upload = form.get(f"market_{i}_{cls}")
+            if upload is not None and hasattr(upload, "read"):
+                files[cls] = await upload.read()
+        if files:
+            markets.append({"name": name, "files": files})
+    if not markets:
+        raise HTTPException(status_code=400, detail="At least one market must have at least one uploaded file")
+
+    try:
+        wb = cmo.build_market_overview_workbook(markets)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _workbook_response(wb, "Market Overview.xlsx")
+
+
+# Parallel "names"/"files" repeated fields (not indexed fields like Market
+# Overview above) since every comp always has both parts -- no per-comp
+# optionality to encode, so the simpler parallel-list form is enough.
+@data_router.post("/costar/multifamily-comps")
+async def post_costar_multifamily_comps(request: Request):
+    form = await request.form()
+    names = form.getlist("names")
+    uploads = form.getlist("files")
+    if not names or len(names) != len(uploads):
+        raise HTTPException(status_code=400, detail="names and files must be provided in equal number")
+
+    comps = []
+    for name, upload in zip(names, uploads):
+        if not hasattr(upload, "read"):
+            continue
+        comps.append({"name": name, "file_bytes": await upload.read()})
+    if not comps:
+        raise HTTPException(status_code=400, detail="At least one comp is required")
+
+    try:
+        wb = cmc.build_multifamily_comps_workbook(comps)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _workbook_response(wb, "Multifamily Comps.xlsx")
+
+
+# Step 1 of the "Live Environment" flow: upload up to 20 files, get back
+# the distinct subdivisions present so the user can pick a comp set before
+# generation. Nothing is cached server-side -- step 2 re-sends the same
+# files, consistent with every other CoStar/SmartRE module being fully
+# stateless.
+@data_router.post("/smartre/subdivisions")
+async def post_smartre_subdivisions(request: Request):
+    form = await request.form()
+    uploads = form.getlist("files")
+    files_bytes = [await u.read() for u in uploads if hasattr(u, "read")]
+    if not files_bytes:
+        raise HTTPException(status_code=400, detail="At least one file is required")
+    try:
+        subdivisions = ss.list_subdivisions(files_bytes)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"subdivisions": subdivisions}
+
+
+@data_router.post("/smartre/sales-analysis")
+async def post_smartre_sales_analysis(request: Request):
+    form = await request.form()
+    uploads = form.getlist("files")
+    subdivisions = form.getlist("subdivisions")
+    files_bytes = [await u.read() for u in uploads if hasattr(u, "read")]
+    if not files_bytes:
+        raise HTTPException(status_code=400, detail="At least one file is required")
+    if not subdivisions:
+        raise HTTPException(status_code=400, detail="At least one subdivision must be selected")
+    try:
+        wb = ss.build_sales_analysis_workbook(files_bytes, subdivisions)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _workbook_response(wb, "SmartRE Sales Analysis.xlsx")
+
+
+# ============================================================
 # Shared helpers
 # ============================================================
+
+def _workbook_response(wb, filename: str) -> StreamingResponse:
+    return StreamingResponse(
+        BytesIO(workbook_to_bytes(wb)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 def _require_geography(geoid: str, return_row: bool = False):
     with engine.connect() as conn:
