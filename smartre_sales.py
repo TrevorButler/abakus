@@ -24,6 +24,7 @@ Price bins (fixed, confirmed): under $50K, $50K bands up to $500K, $100K
 bands up to $1M, then $1M+.
 """
 
+import csv as csv_module
 import re
 from datetime import date
 from io import BytesIO
@@ -102,30 +103,66 @@ def _find_data_sheet(wb):
     raise ValueError("Uploaded file has no data rows")
 
 
+def _to_number(v):
+    if v is None or v == "":
+        return None
+    if isinstance(v, (int, float)):
+        return v
+    try:
+        return float(str(v).replace(",", "").replace("$", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_rows(file_bytes: bytes) -> list[tuple]:
+    """Every row (including any title/header rows) as a plain tuple,
+    regardless of whether the upload is .xlsx or a raw CSV -- SmartRE
+    ships both (confirmed by the original spec and by a real CSV
+    reference file). Detected by content, not filename/extension, since
+    the API layer doesn't thread the original filename through. CSV cells
+    come back as strings (no native numeric/date typing like openpyxl
+    gives xlsx cells) -- callers must coerce."""
+    if file_bytes[:2] == b"PK":  # ZIP magic bytes -- xlsx
+        wb = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True)
+        ws = _find_data_sheet(wb)
+        return [row for row in ws.iter_rows(values_only=True)]
+    text = file_bytes.decode("utf-8-sig", errors="replace")
+    return [tuple(row) for row in csv_module.reader(text.splitlines())]
+
+
 def parse_sales_file(file_bytes: bytes) -> list[dict]:
     """Returns cleaned Sold-only rows. Raises ValueError if the upload
-    doesn't look like a SmartRE sales download. The real header sits on
-    row 2 (row 1 is SmartRE's own title cell, confirmed) but this probes
-    both rows rather than hardcoding, in case that varies."""
-    wb = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True)
-    ws = _find_data_sheet(wb)
+    doesn't look like a SmartRE sales download. Header position varies by
+    format -- the xlsx version has SmartRE's own title cell on row 1 and
+    the real header on row 2, the CSV version has the header directly on
+    row 1 (confirmed against real reference files of both formats) -- so
+    this scans the first several rows for whichever one actually has
+    every required column, rather than assuming a fixed row.
+
+    A previous version only checked rows 1-2 and only handled .xlsx; a
+    real user upload that opened fine but didn't match either assumption
+    hit the "missing expected column(s)" error below, which is why this
+    scans more rows and both formats now."""
+    all_rows = _extract_rows(file_bytes)
+    if not all_rows:
+        raise ValueError("Uploaded file has no data rows")
 
     idx = None
-    for candidate in (1, 2):
-        headers = [c.value for c in next(ws.iter_rows(min_row=candidate, max_row=candidate))]
-        candidate_idx = {h: i for i, h in enumerate(headers) if h}
+    header_row_idx = None
+    for i, row in enumerate(all_rows[:5]):
+        candidate_idx = {str(v).strip(): j for j, v in enumerate(row) if v not in (None, "")}
         if all(c in candidate_idx for c in REQUIRED_COLUMNS):
             idx = candidate_idx
-            header_row = candidate
+            header_row_idx = i
             break
     if idx is None:
         raise ValueError("Missing expected column(s). Is this a SmartRE sales download?")
 
     rows = []
-    for raw in ws.iter_rows(min_row=header_row + 1, values_only=True):
+    for raw in all_rows[header_row_idx + 1:]:
         if idx["Status"] >= len(raw) or raw[idx["Status"]] != "Sold":
             continue
-        price = raw[idx["Price"]] if idx["Price"] < len(raw) else None
+        price = _to_number(raw[idx["Price"]]) if idx["Price"] < len(raw) else None
         if price is None:
             continue
         sale_date = _parse_date(raw[idx["Date"]]) if idx["Date"] < len(raw) else None
@@ -134,7 +171,7 @@ def parse_sales_file(file_bytes: bytes) -> list[dict]:
             "type": raw[idx["Type"]] if idx["Type"] < len(raw) else None,
             "subdivision": str(raw[idx["Subdivision"]]) if idx["Subdivision"] < len(raw) and raw[idx["Subdivision"]] not in (None, "") else "N/a",
             "price": price,
-            "sqft": raw[idx["Sqft"]] if idx["Sqft"] < len(raw) else None,
+            "sqft": _to_number(raw[idx["Sqft"]]) if idx["Sqft"] < len(raw) else None,
             "sale_date": sale_date,
             "county": raw[idx["County"]] if "County" in idx and idx["County"] < len(raw) else None,
             "zip": raw[idx["Zip"]] if "Zip" in idx and idx["Zip"] < len(raw) else None,

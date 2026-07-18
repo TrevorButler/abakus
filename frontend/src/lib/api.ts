@@ -171,7 +171,7 @@ export const OFFICE_DEMAND_SECTORS: { code: string; label: string }[] = [
 ]
 
 // One line series per sector (raw values, not a percent share), all on one
-// chart -- employment_by_sector/wages_by_sector's shape, distinct from
+// chart -- employment_by_sector/avg_pay_by_sector's shape, distinct from
 // ACS's ChartResult union since ACS has no equivalent "many series on one
 // chart, keyed by an arbitrary label" shape.
 export interface SectorLineChart {

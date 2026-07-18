@@ -125,14 +125,22 @@ def employment_by_sector(engine, geoid, sectors: list, start_year: int, end_year
     return {"chart_type": "multi_line", "series_by_label": series_by_label}
 
 
-def wages_by_sector(engine, geoid, sectors: list, start_year: int, end_year: int) -> dict:
-    """multi_line: each selected sector's raw total-wages trend, all on one
-    chart -- same rationale as employment_by_sector."""
+def avg_pay_by_sector(engine, geoid, sectors: list, start_year: int, end_year: int) -> dict:
+    """multi_line: each selected sector's average annual pay trend, all on
+    one chart. Originally this showed raw total dollar wages per sector
+    (mirroring employment_by_sector's raw counts), but that made a region's
+    chart dominated by whichever sectors simply have the most total
+    payroll rather than showing anything about compensation levels --
+    average pay per employee (already correctly weighted via SUM(wages)/
+    SUM(employment) in fetch_sector_series, same math the per-sector
+    Average Annual Pay trend charts use) is the more useful cross-sector
+    comparison, confirmed by explicit feedback."""
     data = fetch_sector_series(engine, geoid, sectors, start_year, end_year)
     series_by_label = {NAICS_SECTORS[code]: {} for code in sectors}
     for year, by_code in data.items():
         for code, v in by_code.items():
-            series_by_label[NAICS_SECTORS[code]][year] = v["wages"]
+            if v["avg_pay"] is not None:
+                series_by_label[NAICS_SECTORS[code]][year] = v["avg_pay"]
     return {"chart_type": "multi_line", "series_by_label": series_by_label}
 
 
@@ -155,7 +163,7 @@ def sector_avg_pay_trend(engine, geoid, naics_code: str, start_year: int, end_ye
 
 
 def _run_dashboard_queries(engine, geoid, start_year: int, end_year: int, sectors: list) -> dict:
-    """Concurrently runs employment_by_sector/wages_by_sector plus one
+    """Concurrently runs employment_by_sector/avg_pay_by_sector plus one
     employment/wage/avg-pay trend chart per selected sector -- same
     ThreadPoolExecutor rationale as demographics_dashboard.py's
     _run_chart_functions (independent read-only queries, no data
@@ -163,7 +171,7 @@ def _run_dashboard_queries(engine, geoid, start_year: int, end_year: int, sector
     with ThreadPoolExecutor(max_workers=MAX_DASHBOARD_WORKERS) as pool:
         futures = {
             "employment_by_sector": pool.submit(employment_by_sector, engine, geoid, sectors, start_year, end_year),
-            "wages_by_sector": pool.submit(wages_by_sector, engine, geoid, sectors, start_year, end_year),
+            "avg_pay_by_sector": pool.submit(avg_pay_by_sector, engine, geoid, sectors, start_year, end_year),
         }
         for code in sectors:
             futures[f"employment_trend_{code}"] = pool.submit(sector_employment_trend, engine, geoid, code, start_year, end_year)
@@ -186,6 +194,6 @@ def get_full_dashboard_region(geoids: list, start_year: int, end_year: int, sect
 
 
 def list_charts() -> list:
-    return ["employment_by_sector", "wages_by_sector"] + [
+    return ["employment_by_sector", "avg_pay_by_sector"] + [
         f"{metric}_trend_{code}" for code in NAICS_SECTORS for metric in ("employment", "wage", "avg_pay")
     ]

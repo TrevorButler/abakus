@@ -10,7 +10,7 @@ interface Props {
   seriesByLabelByGeoid: Record<string, Record<string, Record<string, number>> | undefined>
 }
 
-// BLS's "Separated" comparative view for employment_by_sector/wages_by_sector
+// BLS's "Separated" comparative view for employment_by_sector/avg_pay_by_sector
 // -- unlike every other multi-geo chart (which compares ONE metric across
 // geographies), this data is already multi-series WITHIN each geography
 // (one line per sector), so combining across geographies the normal way

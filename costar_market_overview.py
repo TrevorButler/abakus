@@ -48,27 +48,34 @@ CLASS_LABELS = {
     "hospitality": "Hospitality",
 }
 
-# (output label, raw column name) pairs -- output label doubles as the
-# metric's own sub-table header and chart title.
+# (output label, [candidate raw column names]) -- output label doubles as
+# the metric's own sub-table header and chart title. Most metrics have one
+# candidate; the rent metric needs two because real Office exports name it
+# differently from Retail/Industrial & Flex (confirmed against real CoStar
+# downloads: Retail and Industrial & Flex both use "All Service Type Rent
+# Overall", but Office uses "Office Gross Rent Overall" instead -- the
+# original reference file this was built against happened to be a Retail-
+# flavored export, so this divergence wasn't caught until a real Office
+# upload hit it).
 _COMMERCIAL_METRICS = [
-    ("Inventory SF", "Inventory SF"),
-    ("Vacant Percent % Total", "Vacant Percent % Total"),
-    ("Net Absorption SF Total", "Net Absorption SF Total"),
-    ("Deliveries SF", "Deliveries SF"),
-    ("All Service Type Rent Overall", "All Service Type Rent Overall"),
+    ("Inventory SF", ["Inventory SF"]),
+    ("Vacant Percent % Total", ["Vacant Percent % Total"]),
+    ("Net Absorption SF Total", ["Net Absorption SF Total"]),
+    ("Deliveries SF", ["Deliveries SF"]),
+    ("All Service Type Rent Overall", ["All Service Type Rent Overall", "Office Gross Rent Overall"]),
 ]
 _MULTIFAMILY_METRICS = [
-    ("Inventory Units", "Inventory Units"),
-    ("Effective Rent Per Unit", "Effective Rent Per Unit"),
-    ("Effective Rent Per SF", "Effective Rent Per SF"),
-    ("Vacancy Percent", "Vacancy Percent"),
-    ("Absorption Units", "Absorption Units"),
-    ("Deliveries Units", "Deliveries Units"),
+    ("Inventory Units", ["Inventory Units"]),
+    ("Effective Rent Per Unit", ["Effective Rent Per Unit"]),
+    ("Effective Rent Per SF", ["Effective Rent Per SF"]),
+    ("Vacancy Percent", ["Vacancy Percent"]),
+    ("Absorption Units", ["Absorption Units"]),
+    ("Deliveries Units", ["Deliveries Units"]),
 ]
 _HOSPITALITY_METRICS = [
-    ("Occupancy", "Occupancy"),
-    ("ADR", "ADR"),
-    ("RevPAR", "RevPAR"),
+    ("Occupancy", ["Occupancy"]),
+    ("ADR", ["ADR"]),
+    ("RevPAR", ["RevPAR"]),
 ]
 
 METRICS_BY_CLASS = {
@@ -94,6 +101,23 @@ def _period_year(period):
     return int(m.group(1)) if m else None
 
 
+def _to_number(v):
+    """CoStar writes a literal '-' string (not a blank cell) for a
+    suppressed/unavailable metric on a given row -- confirmed against real
+    downloads, where most rows for a smaller submarket are almost entirely
+    '-'. Summing that directly threw TypeError: unsupported operand
+    type(s) for +: 'int' and 'str'; this treats it (and any other
+    non-numeric placeholder) the same as a missing value."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, (int, float)):
+        return v
+    try:
+        return float(str(v).replace(",", "").replace("%", ""))
+    except (TypeError, ValueError):
+        return None
+
+
 def parse_grid(file_bytes: bytes, cls: str) -> dict:
     """Returns {metric_label: {year: value}} for one uploaded file."""
     wb = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True)
@@ -104,18 +128,27 @@ def parse_grid(file_bytes: bytes, cls: str) -> dict:
         raise ValueError(f"Missing 'Period' column. Is this a CoStar {CLASS_LABELS[cls]} data grid export?")
 
     metrics = METRICS_BY_CLASS[cls]
-    missing = [raw for _, raw in metrics if raw not in idx]
+    # First matching candidate column wins (see _COMMERCIAL_METRICS -- the
+    # rent metric has real per-class name variants).
+    resolved: dict = {}
+    missing = []
+    for label, candidates in metrics:
+        found = next((c for c in candidates if c in idx), None)
+        if found is None:
+            missing.append(candidates[0])
+        else:
+            resolved[label] = found
     if missing:
         raise ValueError(f"Missing expected column(s) {missing} for {CLASS_LABELS[cls]}")
 
-    sums: dict = {label: {} for label, _ in metrics}
-    counts: dict = {label: {} for label, _ in metrics}
+    sums: dict = {label: {} for label in resolved}
+    counts: dict = {label: {} for label in resolved}
     for raw in ws.iter_rows(min_row=2, values_only=True):
         year = _period_year(raw[idx["Period"]]) if idx["Period"] < len(raw) else None
         if year is None:
             continue
-        for label, col in metrics:
-            v = raw[idx[col]] if idx[col] < len(raw) else None
+        for label, col in resolved.items():
+            v = _to_number(raw[idx[col]]) if idx[col] < len(raw) else None
             if v is None:
                 continue
             sums[label][year] = sums[label].get(year, 0) + v

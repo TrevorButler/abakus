@@ -16,7 +16,11 @@ export interface BlsChartMeta {
 
 export function blsChartMeta(key: string): BlsChartMeta {
   if (key === 'employment_by_sector') return { title: 'Employment by Sector', format: 'count' }
-  if (key === 'wages_by_sector') return { title: 'Wages by Sector', format: 'dollars' }
+  // Average pay per employee, not raw total dollar wages -- comparing
+  // total payroll across sectors just showed whichever sectors have the
+  // most total headcount, not compensation levels, which is what this
+  // combined view is actually meant to answer.
+  if (key === 'avg_pay_by_sector') return { title: 'Average Pay by Sector', format: 'dollars' }
 
   const trendMatch = key.match(/^(employment|wage|avg_pay)_trend_([\d-]+)$/)
   if (trendMatch) {
