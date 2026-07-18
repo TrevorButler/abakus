@@ -177,7 +177,13 @@ function AggregatedDashboard({
             const geoCharts: Record<string, LineChart> = Object.fromEntries(
               labels.map((label) => [label, { chart_type: 'line' as const, series: chart.series_by_label[label] }])
             )
-            return <MultiGeoLineChartCard key={key} title={meta.title} format={meta.format} geographies={geographies} charts={geoCharts} />
+            // Full row width + extra height for the all-20-sectors charts,
+            // same treatment as BlsDashboard.tsx's single-geography view.
+            return (
+              <div key={key} className="md:col-span-2 xl:col-span-3">
+                <MultiGeoLineChartCard title={meta.title} format={meta.format} geographies={geographies} charts={geoCharts} height={420} />
+              </div>
+            )
           })}
         </div>
       )}

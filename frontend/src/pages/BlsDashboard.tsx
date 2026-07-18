@@ -80,7 +80,15 @@ export default function BlsDashboard() {
             const charts: Record<string, LineChart> = Object.fromEntries(
               labels.map((label) => [label, { chart_type: 'line' as const, series: chart.series_by_label[label] }])
             )
-            return <MultiGeoLineChartCard key={key} title={meta.title} format={meta.format} geographies={geographies} charts={charts} />
+            // Now that these carry all 20 sectors' worth of lines, they get
+            // the full row width and extra height to keep the legend/lines
+            // legible instead of squeezing into the same grid cell as the
+            // single-sector trend charts.
+            return (
+              <div key={key} className="md:col-span-2 xl:col-span-3">
+                <MultiGeoLineChartCard title={meta.title} format={meta.format} geographies={geographies} charts={charts} height={420} />
+              </div>
+            )
           })}
         </div>
       )}

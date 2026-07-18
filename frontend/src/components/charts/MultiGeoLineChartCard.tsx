@@ -9,12 +9,13 @@ interface Props {
   format: ValueFormat
   geographies: { geoid: string; label: string }[]
   charts: Record<string, LineChartData>
+  height?: number
 }
 
 // One line per geography, all years -- per the UX outline, line charts stay
 // full-range in comparative mode even though stacked bars get restricted to
 // two endpoint years (see MultiGeoStackedBarChartCard).
-export default function MultiGeoLineChartCard({ title, format, geographies, charts }: Props) {
+export default function MultiGeoLineChartCard({ title, format, geographies, charts, height = 240 }: Props) {
   const years = Array.from(new Set(geographies.flatMap((g) => Object.keys(charts[g.geoid]?.series ?? {})))).sort()
   if (years.length === 0) {
     return <ChartCardShell title={title}>No data for this range.</ChartCardShell>
@@ -33,7 +34,7 @@ export default function MultiGeoLineChartCard({ title, format, geographies, char
 
   return (
     <ChartCardShell title={title} onDownload={() => downloadCSV(`${title}.csv`, multiGeoSeriesRows(geographies, seriesByGeoid))}>
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e4e7" />
           <XAxis dataKey="year" tick={{ fontSize: 12 }} />
