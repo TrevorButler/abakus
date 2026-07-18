@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import { api, type BlsDashboardResult, type LineChart, type StackedBarChart } from '../lib/api'
-import { blsChartMeta } from '../lib/blsChartMeta'
+import { api, type BlsDashboardResult, type LineChart } from '../lib/api'
+import { blsChartMeta, blsMultiGeoDashboardSheets } from '../lib/blsChartMeta'
 import MultiGeoLineChartCard from '../components/charts/MultiGeoLineChartCard'
-import MultiGeoStackedBarChartCard from '../components/charts/MultiGeoStackedBarChartCard'
-import { multiGeoDashboardSheets } from '../lib/download'
+import MultiGeoSectorLineChartCard from '../components/charts/MultiGeoSectorLineChartCard'
 import DownloadSheetsButton from '../components/DownloadSheetsButton'
 
 const MIN_YEAR = 2014 // QCEW's bulk open-data API only serves a rolling window, not back to 2010
@@ -18,11 +17,10 @@ interface Props {
 // shape exactly, but chart names are derived from the actual response
 // (one entry per selected sector) rather than a fixed CHART_META, since
 // BLS sectors are user-toggleable rather than a static 27-chart set. Only
-// line/stacked_bar chart types exist here (no "bar" type, unlike ACS).
+// line/multi_line chart types exist here (no "bar"/"stacked_bar", unlike ACS).
 export default function BlsMultiGeoDashboard({ geographies, sectors }: Props) {
   const [startYear, setStartYear] = useState(MIN_YEAR)
   const [endYear, setEndYear] = useState(MAX_YEAR)
-  const [viewMode, setViewMode] = useState<'percent' | 'count'>('percent')
   const [dataByGeoid, setDataByGeoid] = useState<Record<string, BlsDashboardResult>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -58,14 +56,6 @@ export default function BlsMultiGeoDashboard({ geographies, sectors }: Props) {
           To
           <YearSelect value={endYear} onChange={setEndYear} min={startYear} />
         </label>
-        <ToggleGroup
-          value={viewMode}
-          onChange={(v) => setViewMode(v as 'percent' | 'count')}
-          options={[
-            { value: 'percent', label: '%' },
-            { value: 'count', label: '#' },
-          ]}
-        />
       </div>
 
       <p className="text-xs text-abakus-light-grey text-center max-w-md">
@@ -91,20 +81,18 @@ export default function BlsMultiGeoDashboard({ geographies, sectors }: Props) {
               return <MultiGeoLineChartCard key={key} title={meta.title} format={meta.format} geographies={geographies} charts={charts} />
             }
 
-            const charts: Record<string, StackedBarChart> = {}
+            const seriesByLabelByGeoid: Record<string, Record<string, Record<string, number>> | undefined> = {}
             geographies.forEach((g) => {
               const c = dataByGeoid[g.geoid]?.[key]
-              if (c?.chart_type === 'stacked_bar') charts[g.geoid] = c
+              seriesByLabelByGeoid[g.geoid] = c?.chart_type === 'multi_line' ? c.series_by_label : undefined
             })
             return (
-              <MultiGeoStackedBarChartCard
+              <MultiGeoSectorLineChartCard
                 key={key}
                 title={meta.title}
+                format={meta.format}
                 geographies={geographies}
-                charts={charts}
-                startYear={startYear}
-                endYear={endYear}
-                viewMode={viewMode}
+                seriesByLabelByGeoid={seriesByLabelByGeoid}
               />
             )
           })}
@@ -114,7 +102,7 @@ export default function BlsMultiGeoDashboard({ geographies, sectors }: Props) {
       {!loading && chartNames.length > 0 && (
         <DownloadSheetsButton
           filename="BLS Comparison.xlsx"
-          sheets={multiGeoDashboardSheets(geographies, dataByGeoid, chartNames, (key) => blsChartMeta(key).title, viewMode)}
+          sheets={blsMultiGeoDashboardSheets(geographies, dataByGeoid, chartNames, (key) => blsChartMeta(key).title)}
         />
       )}
     </div>
@@ -132,24 +120,5 @@ function YearSelect({ value, onChange, min = MIN_YEAR, max = MAX_YEAR }: { value
         </option>
       ))}
     </select>
-  )
-}
-
-function ToggleGroup({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
-  return (
-    <div className="inline-flex rounded-lg border border-abakus-charcoal/15 overflow-hidden">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-            value === opt.value ? 'bg-abakus-charcoal text-white' : 'bg-white text-abakus-charcoal hover:bg-abakus-cream'
-          }`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
   )
 }

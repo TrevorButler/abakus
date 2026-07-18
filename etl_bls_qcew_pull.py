@@ -3,10 +3,12 @@ etl_bls_qcew_pull.py
 
 Pulls BLS QCEW (Quarterly Census of Employment and Wages) annual-average
 employment and wages for every county in the 7-state region, for the
-Total-all-industries aggregate plus 7 two-digit NAICS sectors (Information;
-Finance & Insurance; Real Estate; Professional/Scientific/Technical Services;
-Management of Companies; Administrative/Waste Services; Health Care & Social
-Assistance), and loads them into `bls_qcew_estimates` (schema_bls.sql).
+Total-all-industries aggregate plus all 20 real two-digit NAICS sectors,
+and loads them into `bls_qcew_estimates` (schema_bls.sql).
+
+'99' (Unclassified) is deliberately excluded -- confirmed via a live pull
+that it isn't a real industry (BLS's catch-all for unclassifiable
+establishments), unlike the 20 genuine 2-digit sectors.
 
 Uses the QCEW Open Data CSV API (data.bls.gov/cew/data/api/{year}/a/area/{fips}.csv)
 -- NOT api.bls.gov's registered timeseries API, which is series-ID-oriented and
@@ -57,17 +59,34 @@ MIN_YEAR = 2014  # earliest year this endpoint actually serves -- see module doc
 MAX_PROBE_YEAR = 2030  # descend from here looking for the newest year with a real annual file
 
 TOTAL_INDUSTRY_CODE = "10"
-PROFESSIONAL_SECTORS = {
+
+# All 20 real 2-digit NAICS/QCEW sectors -- confirmed via a live pull
+# (agglvl_code=74 rows for Fulton County GA) that this is the complete,
+# real sector list; industry_code is literally "31-33"/"44-45"/"48-49"
+# for the 3 multi-digit-range sectors, matching BLS's own CSV encoding.
+NAICS_SECTORS = {
+    "11": "Agriculture, Forestry, Fishing and Hunting",
+    "21": "Mining, Quarrying, and Oil and Gas Extraction",
+    "22": "Utilities",
+    "23": "Construction",
+    "31-33": "Manufacturing",
+    "42": "Wholesale Trade",
+    "44-45": "Retail Trade",
+    "48-49": "Transportation and Warehousing",
     "51": "Information",
     "52": "Finance and Insurance",
     "53": "Real Estate and Rental and Leasing",
     "54": "Professional, Scientific, and Technical Services",
     "55": "Management of Companies and Enterprises",
     "56": "Administrative and Support and Waste Management and Remediation Services",
+    "61": "Educational Services",
+    "62": "Health Care and Social Assistance",
+    "71": "Arts, Entertainment, and Recreation",
+    "72": "Accommodation and Food Services",
+    "81": "Other Services (except Public Administration)",
+    "92": "Public Administration",
 }
-HEALTHCARE_SECTOR = {"62": "Health Care and Social Assistance"}
-ALL_SECTORS = {**PROFESSIONAL_SECTORS, **HEALTHCARE_SECTOR}
-SECTOR_TITLES = {TOTAL_INDUSTRY_CODE: "Total, All Industries", **ALL_SECTORS}
+SECTOR_TITLES = {TOTAL_INDUSTRY_CODE: "Total, All Industries", **NAICS_SECTORS}
 
 MAX_RETRIES = 3
 SLEEP_BETWEEN_REQUESTS = 0.1
@@ -103,7 +122,7 @@ def find_max_year() -> int:
 
 def fetch_county_year(area_fips: str, year: int) -> list[dict]:
     """Returns rows shaped for bls_qcew_estimates: one per (naics_code) in
-    {TOTAL_INDUSTRY_CODE} | ALL_SECTORS, or fewer if a sector is entirely
+    {TOTAL_INDUSTRY_CODE} | NAICS_SECTORS, or fewer if a sector is entirely
     suppressed for this county-year. Returns [] if the county has no file for
     this year at all (404) or the response is empty."""
     resp = _get_with_retries(f"https://data.bls.gov/cew/data/api/{year}/a/area/{area_fips}.csv")
@@ -132,7 +151,7 @@ def fetch_county_year(area_fips: str, year: int) -> list[dict]:
             "avg_annual_pay": wages / emplvl if emplvl else None,
         })
 
-    for naics_code, naics_title in ALL_SECTORS.items():
+    for naics_code, naics_title in NAICS_SECTORS.items():
         sector_rows = [
             r for r in all_rows
             if r["industry_code"] == naics_code and r["agglvl_code"] == "74"

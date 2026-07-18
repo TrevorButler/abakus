@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { api, type PumaSummary } from '../lib/api'
 import PumaMap from '../components/PumaMap'
 import ErrorBarChartCard from '../components/charts/ErrorBarChartCard'
-import { downloadCSV } from '../lib/download'
 
 export default function PumaHouseholdSummary() {
   const [selectedGeoid, setSelectedGeoid] = useState<string | null>(null)
@@ -69,8 +68,10 @@ export default function PumaHouseholdSummary() {
             <ErrorBarChartCard title="Average Household Size by Unit Type" data={summary.household_size_by_unit_type} valueLabel="Persons" />
             <ErrorBarChartCard title="Average School-Aged Children by Unit Type" data={summary.school_children_by_unit_type} valueLabel="Children" />
           </div>
-
-          <BedroomDistributionCard distribution={summary.bedroom_distribution} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <ErrorBarChartCard title="Average Household Size by Bedroom Count" data={summary.household_size_by_bedroom_count} valueLabel="Persons" />
+            <ErrorBarChartCard title="Average School-Aged Children by Bedroom Count" data={summary.school_children_by_bedroom_count} valueLabel="Children" />
+          </div>
         </div>
       )}
 
@@ -81,32 +82,3 @@ export default function PumaHouseholdSummary() {
   )
 }
 
-function BedroomDistributionCard({ distribution }: { distribution: Record<string, number> }) {
-  const entries = Object.entries(distribution)
-  if (entries.length === 0) return null
-
-  const rows: (string | number)[][] = [['Bedroom Count', 'Share'], ...entries.map(([label, share]) => [label, share])]
-
-  return (
-    <div className="bg-white rounded-xl border border-abakus-charcoal/10 p-6 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-medium text-abakus-charcoal">Bedroom Distribution (All Unit Types)</h2>
-        <button
-          type="button"
-          onClick={() => downloadCSV('Bedroom Distribution.csv', rows)}
-          className="text-abakus-blue hover:underline text-sm"
-        >
-          Download chart data
-        </button>
-      </div>
-      <div className="flex flex-wrap gap-4">
-        {entries.map(([label, share]) => (
-          <div key={label} className="flex flex-col gap-1 min-w-[100px]">
-            <p className="text-xs text-abakus-light-grey">{label}</p>
-            <p className="text-lg font-medium text-abakus-charcoal">{(share * 100).toFixed(1)}%</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}

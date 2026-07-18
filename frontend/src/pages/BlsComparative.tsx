@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, BLS_SECTORS, type BlsDashboardResult } from '../lib/api'
-import { blsChartMeta } from '../lib/blsChartMeta'
+import { api, NAICS_SECTORS, type BlsDashboardResult, type LineChart } from '../lib/api'
+import { blsChartMeta, blsDashboardSheets } from '../lib/blsChartMeta'
 import GeographyList from '../components/GeographyList'
 import GeographyMap from '../components/GeographyMap'
 import SectorToggles from '../components/SectorToggles'
 import LineChartCard from '../components/charts/LineChartCard'
-import StackedBarChartCard from '../components/charts/StackedBarChartCard'
+import MultiGeoLineChartCard from '../components/charts/MultiGeoLineChartCard'
 import BlsMultiGeoDashboard from './BlsMultiGeoDashboard'
-import { dashboardSheets } from '../lib/download'
 import DownloadSheetsButton from '../components/DownloadSheetsButton'
 
 const MAX_REGION_SIZE = 50
@@ -25,7 +24,7 @@ export default function BlsComparative() {
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
   const [selectedGeoids, setSelectedGeoids] = useState<string[]>([])
   const [geoLabels, setGeoLabels] = useState<Record<string, string>>({})
-  const [sectors, setSectors] = useState<string[]>(BLS_SECTORS.map((s) => s.code))
+  const [sectors, setSectors] = useState<string[]>(NAICS_SECTORS.map((s) => s.code))
   const [showDashboard, setShowDashboard] = useState<'aggregated' | 'separated' | null>(null)
 
   function toggleGeo(geoid: string) {
@@ -124,7 +123,6 @@ function AggregatedDashboard({
 }) {
   const [startYear, setStartYear] = useState(MIN_YEAR)
   const [endYear, setEndYear] = useState(MAX_YEAR)
-  const [viewMode, setViewMode] = useState<'percent' | 'count'>('percent')
   const [charts, setCharts] = useState<BlsDashboardResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -159,14 +157,6 @@ function AggregatedDashboard({
           To
           <YearSelect value={endYear} onChange={setEndYear} min={startYear} />
         </label>
-        <ToggleGroup
-          value={viewMode}
-          onChange={(v) => setViewMode(v as 'percent' | 'count')}
-          options={[
-            { value: 'percent', label: '%' },
-            { value: 'count', label: '#' },
-          ]}
-        />
       </div>
 
       <SectorToggles selected={sectors} onChange={onSectorsChange} />
@@ -182,15 +172,12 @@ function AggregatedDashboard({
             if (chart.chart_type === 'line') {
               return <LineChartCard key={key} title={meta.title} format={meta.format} series={chart.series} />
             }
-            return (
-              <StackedBarChartCard
-                key={key}
-                title={meta.title}
-                categories={chart.categories}
-                rawCategories={chart.raw_categories}
-                viewMode={viewMode}
-              />
+            const labels = Object.keys(chart.series_by_label)
+            const geographies = labels.map((label) => ({ geoid: label, label }))
+            const geoCharts: Record<string, LineChart> = Object.fromEntries(
+              labels.map((label) => [label, { chart_type: 'line' as const, series: chart.series_by_label[label] }])
             )
+            return <MultiGeoLineChartCard key={key} title={meta.title} format={meta.format} geographies={geographies} charts={geoCharts} />
           })}
         </div>
       )}
@@ -198,7 +185,7 @@ function AggregatedDashboard({
       {charts && (
         <DownloadSheetsButton
           filename="BLS Comparative Aggregated.xlsx"
-          sheets={dashboardSheets(charts, (key) => blsChartMeta(key).title, viewMode)}
+          sheets={blsDashboardSheets(charts, (key) => blsChartMeta(key).title)}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { BLS_SECTORS } from '../lib/api'
+import { NAICS_SECTORS } from '../lib/api'
 
 interface Props {
   selected: string[]
@@ -14,7 +14,7 @@ export default function SectorToggles({ selected, onChange }: Props) {
 
   return (
     <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
-      {BLS_SECTORS.map((sector) => {
+      {NAICS_SECTORS.map((sector) => {
         const active = selected.includes(sector.code)
         return (
           <button

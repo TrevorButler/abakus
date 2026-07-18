@@ -332,11 +332,11 @@ def get_comparative_communities(
 
 def _parse_sectors(sectors: Optional[str]) -> list:
     if not sectors:
-        return list(bls.ALL_SECTORS.keys())
+        return list(bls.NAICS_SECTORS.keys())
     codes = [c.strip() for c in sectors.split(",") if c.strip()]
-    unknown = [c for c in codes if c not in bls.ALL_SECTORS]
+    unknown = [c for c in codes if c not in bls.NAICS_SECTORS]
     if unknown:
-        raise HTTPException(status_code=400, detail=f"Unknown sector code(s): {unknown}. Valid: {sorted(bls.ALL_SECTORS)}")
+        raise HTTPException(status_code=400, detail=f"Unknown sector code(s): {unknown}. Valid: {sorted(bls.NAICS_SECTORS)}")
     return codes
 
 
@@ -347,7 +347,7 @@ def get_bls_dashboard_region(
     geoids: str = Query(..., description="Comma-separated county geoids to aggregate"),
     start_year: int = Query(2010, ge=2010),
     end_year: int = Query(2024, ge=2010),
-    sectors: Optional[str] = Query(None, description="Comma-separated NAICS sector codes; omit for all 7"),
+    sectors: Optional[str] = Query(None, description="Comma-separated NAICS sector codes; omit for all 20"),
 ):
     geoid_list = [g.strip() for g in geoids.split(",") if g.strip()]
     if not geoid_list:
@@ -365,7 +365,7 @@ def get_bls_dashboard(
     geoid: str,
     start_year: int = Query(2010, ge=2010),
     end_year: int = Query(2024, ge=2010),
-    sectors: Optional[str] = Query(None, description="Comma-separated NAICS sector codes; omit for all 7"),
+    sectors: Optional[str] = Query(None, description="Comma-separated NAICS sector codes; omit for all 20"),
 ):
     _require_geography(geoid)
     if start_year > end_year:

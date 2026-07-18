@@ -26,6 +26,37 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://localhost/census_das
 MAX_DASHBOARD_WORKERS = 10
 
 TOTAL_INDUSTRY_CODE = "10"
+
+# All 20 real 2-digit NAICS/QCEW sectors -- the dashboard/comparative views'
+# full sector set. '99' (Unclassified) and '10' (Total) are deliberately
+# excluded: confirmed via a live QCEW pull that '99' isn't a real industry
+# and '10' is the grand total, not a sector.
+NAICS_SECTORS = {
+    "11": "Agriculture, Forestry, Fishing and Hunting",
+    "21": "Mining, Quarrying, and Oil and Gas Extraction",
+    "22": "Utilities",
+    "23": "Construction",
+    "31-33": "Manufacturing",
+    "42": "Wholesale Trade",
+    "44-45": "Retail Trade",
+    "48-49": "Transportation and Warehousing",
+    "51": "Information",
+    "52": "Finance and Insurance",
+    "53": "Real Estate and Rental and Leasing",
+    "54": "Professional, Scientific, and Technical Services",
+    "55": "Management of Companies and Enterprises",
+    "56": "Administrative and Support and Waste Management and Remediation Services",
+    "61": "Educational Services",
+    "62": "Health Care and Social Assistance",
+    "71": "Arts, Entertainment, and Recreation",
+    "72": "Accommodation and Food Services",
+    "81": "Other Services (except Public Administration)",
+    "92": "Public Administration",
+}
+
+# Office Demand's narrower sector set -- unchanged, kept separate from
+# NAICS_SECTORS since that module's sqft-per-employee coefficients only
+# make sense for professional/office and medical employment, not all 20.
 PROFESSIONAL_SECTORS = {
     "51": "Information",
     "52": "Finance and Insurance",
@@ -82,31 +113,27 @@ def fetch_sector_series(engine, geoid, naics_codes: list, start_year: int, end_y
 
 
 def employment_by_sector(engine, geoid, sectors: list, start_year: int, end_year: int) -> dict:
-    """stacked_bar: each selected sector's share of SUMMED employment across
-    just the selected sectors (not a share of the whole county economy)."""
+    """multi_line: each selected sector's raw employment trend, all on one
+    chart -- a percent-of-selected-sectors share (the original stacked_bar
+    design) wasn't a useful view in practice; users want to compare
+    absolute employment levels across sectors directly."""
     data = fetch_sector_series(engine, geoid, sectors, start_year, end_year)
-    categories, raw_categories = {}, {}
+    series_by_label = {NAICS_SECTORS[code]: {} for code in sectors}
     for year, by_code in data.items():
-        total = sum(v["employment"] for v in by_code.values())
-        if not total:
-            continue
-        categories[year] = {ALL_SECTORS[code]: v["employment"] / total for code, v in by_code.items()}
-        raw_categories[year] = {ALL_SECTORS[code]: v["employment"] for code, v in by_code.items()}
-    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
+        for code, v in by_code.items():
+            series_by_label[NAICS_SECTORS[code]][year] = v["employment"]
+    return {"chart_type": "multi_line", "series_by_label": series_by_label}
 
 
 def wages_by_sector(engine, geoid, sectors: list, start_year: int, end_year: int) -> dict:
-    """stacked_bar: each selected sector's share of SUMMED total wages
-    across just the selected sectors."""
+    """multi_line: each selected sector's raw total-wages trend, all on one
+    chart -- same rationale as employment_by_sector."""
     data = fetch_sector_series(engine, geoid, sectors, start_year, end_year)
-    categories, raw_categories = {}, {}
+    series_by_label = {NAICS_SECTORS[code]: {} for code in sectors}
     for year, by_code in data.items():
-        total = sum(v["wages"] for v in by_code.values())
-        if not total:
-            continue
-        categories[year] = {ALL_SECTORS[code]: v["wages"] / total for code, v in by_code.items()}
-        raw_categories[year] = {ALL_SECTORS[code]: v["wages"] for code, v in by_code.items()}
-    return {"chart_type": "stacked_bar", "categories": categories, "raw_categories": raw_categories}
+        for code, v in by_code.items():
+            series_by_label[NAICS_SECTORS[code]][year] = v["wages"]
+    return {"chart_type": "multi_line", "series_by_label": series_by_label}
 
 
 def sector_employment_trend(engine, geoid, naics_code: str, start_year: int, end_year: int) -> dict:
@@ -160,5 +187,5 @@ def get_full_dashboard_region(geoids: list, start_year: int, end_year: int, sect
 
 def list_charts() -> list:
     return ["employment_by_sector", "wages_by_sector"] + [
-        f"{metric}_trend_{code}" for code in ALL_SECTORS for metric in ("employment", "wage", "avg_pay")
+        f"{metric}_trend_{code}" for code in NAICS_SECTORS for metric in ("employment", "wage", "avg_pay")
     ]

@@ -146,24 +146,32 @@ def average_school_children_by_unit_type(engine, puma_geoid: str) -> dict:
     return result
 
 
-def bedroom_distribution(engine, puma_geoid: str, bld_codes: list | None = None) -> dict:
-    """WGTP-weighted share of households per bedroom-count bucket
-    (Studio/1BR/.../5+BR). Defaults to ALL unit types combined; pass
-    bld_codes to scope to one unit-type bucket instead."""
-    rows = fetch_households(engine, puma_geoid, bld_codes)
-    total_weight = sum(r["wgtp"] for r in rows)
-    if not total_weight:
-        return {}
-
-    bucket_weights: dict[int, float] = {}
+def _by_bedroom_count(rows: list[dict], value_fn) -> dict:
+    """{bedroom_label: {mean, se, n}} -- groups rows by BDSP bucket
+    (Studio/1BR/.../5+BR) and computes a weighted stat within each."""
+    buckets: dict[int, list[dict]] = {}
     for row in rows:
         bdsp = row["bdsp"]
         if bdsp is None:
             continue
         bucket = min(bdsp, 5)  # 5+ bedrooms collapse into one bucket
-        bucket_weights[bucket] = bucket_weights.get(bucket, 0.0) + row["wgtp"]
+        buckets.setdefault(bucket, []).append(row)
+    return {BEDROOM_LABELS.get(b, str(b)): _stat(bucket_rows, value_fn) for b, bucket_rows in sorted(buckets.items())}
 
-    return {BEDROOM_LABELS.get(b, str(b)): w / total_weight for b, w in sorted(bucket_weights.items())}
+
+def average_household_size_by_bedroom_count(engine, puma_geoid: str) -> dict:
+    """{bedroom_label: {mean, se, n}} -- average persons per household
+    (PUMS NP), weighted, grouped by bedroom count across ALL unit types
+    (not scoped to one BLD bucket, unlike the by-unit-type version)."""
+    rows = fetch_households(engine, puma_geoid)
+    return _by_bedroom_count(rows, lambda r: r["np"])
+
+
+def average_school_children_by_bedroom_count(engine, puma_geoid: str) -> dict:
+    """{bedroom_label: {mean, se, n}} -- average related children under 18
+    (PUMS NRC), weighted, grouped by bedroom count across ALL unit types."""
+    rows = fetch_households(engine, puma_geoid)
+    return _by_bedroom_count(rows, lambda r: r["nrc"])
 
 
 def get_full_puma_summary(puma_geoid: str, engine=None) -> dict:
@@ -171,5 +179,6 @@ def get_full_puma_summary(puma_geoid: str, engine=None) -> dict:
     return {
         "household_size_by_unit_type": average_household_size_by_unit_type(engine, puma_geoid),
         "school_children_by_unit_type": average_school_children_by_unit_type(engine, puma_geoid),
-        "bedroom_distribution": bedroom_distribution(engine, puma_geoid),
+        "household_size_by_bedroom_count": average_household_size_by_bedroom_count(engine, puma_geoid),
+        "school_children_by_bedroom_count": average_school_children_by_bedroom_count(engine, puma_geoid),
     }

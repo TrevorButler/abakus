@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, BLS_SECTORS, type BlsOfficeDemandParams, type BlsOfficeDemandResult, type BlsRateBasis } from '../lib/api'
+import { api, OFFICE_DEMAND_SECTORS, type BlsOfficeDemandParams, type BlsOfficeDemandResult, type BlsRateBasis } from '../lib/api'
 import GeographyList from '../components/GeographyList'
 import GeographyMap from '../components/GeographyMap'
 import { formatValue } from '../lib/chartMeta'
@@ -20,7 +20,7 @@ interface SectorFormState {
 
 function defaultSectorParams(baseYear: number): Record<string, SectorFormState> {
   return Object.fromEntries(
-    BLS_SECTORS.map((s) => [
+    OFFICE_DEMAND_SECTORS.map((s) => [
       s.code,
       { enabled: true, rate_basis: '10yr' as BlsRateBasis, custom_rate: 2.0, custom_start_year: baseYear - 3, custom_end_year: baseYear },
     ])
@@ -63,7 +63,7 @@ export default function BlsOfficeDemand() {
     const body: BlsOfficeDemandParams = {
       base_year: baseYear,
       target_year: targetYear,
-      sectors: BLS_SECTORS.map((s) => {
+      sectors: OFFICE_DEMAND_SECTORS.map((s) => {
         const p = sectorParams[s.code]
         return {
           naics_code: s.code,
@@ -127,7 +127,7 @@ export default function BlsOfficeDemand() {
               </div>
 
               <div className="flex flex-col">
-                {BLS_SECTORS.map((sector) => (
+                {OFFICE_DEMAND_SECTORS.map((sector) => (
                   <SectorRateField
                     key={sector.code}
                     label={sector.label}
@@ -166,7 +166,8 @@ export default function BlsOfficeDemand() {
 }
 
 function ResultsPanel({ result, countyLabel }: { result: BlsOfficeDemandResult; countyLabel: string }) {
-  const sectorLabel = (code: string) => BLS_SECTORS.find((s) => s.code === code)?.label ?? code
+  const [selectedPlace, setSelectedPlace] = useState<string>('__all__')
+  const sectorLabel = (code: string) => OFFICE_DEMAND_SECTORS.find((s) => s.code === code)?.label ?? code
 
   const sectorRows: (string | number)[][] = [
     ['Sector', 'Base Employment', 'Annual Rate', 'Projected Employment', 'Sqft Demand (Low)', 'Sqft Demand (High)'],
@@ -236,29 +237,58 @@ function ResultsPanel({ result, countyLabel }: { result: BlsOfficeDemandResult; 
         </table>
       </div>
 
-      <div className="w-full overflow-x-auto bg-white rounded-xl border border-abakus-charcoal/10">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-abakus-charcoal/10 text-left text-abakus-light-grey">
-              {placeRows[0].map((h) => (
-                <th key={String(h)} className="px-4 py-2 font-medium">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {placeRows.slice(1).map((row, i) => (
-              <tr key={i} className="border-b border-abakus-charcoal/5 last:border-0">
-                {row.map((cell, j) => (
-                  <td key={j} className="px-4 py-2 text-abakus-charcoal">
-                    {typeof cell === 'number' ? cell.toLocaleString(undefined, { maximumFractionDigits: 0 }) : cell}
-                  </td>
-                ))}
-              </tr>
+      <div className="w-full bg-white rounded-xl border border-abakus-charcoal/10 p-4 flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-abakus-charcoal">City / Place</label>
+          <select
+            value={selectedPlace}
+            onChange={(e) => setSelectedPlace(e.target.value)}
+            className="border border-abakus-charcoal/20 rounded-lg px-3 py-2 bg-white text-sm"
+          >
+            <option value="__all__">All Places</option>
+            {Object.keys(result.professional_sqft_by_place).map((geoid) => (
+              <option key={geoid} value={geoid}>
+                {result.professional_sqft_by_place[geoid]?.display_name ?? geoid}
+              </option>
             ))}
-          </tbody>
-        </table>
+          </select>
+        </div>
+
+        {selectedPlace === '__all__' ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-abakus-charcoal/10 text-left text-abakus-light-grey">
+                  {placeRows[0].map((h) => (
+                    <th key={String(h)} className="px-4 py-2 font-medium">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {placeRows.slice(1).map((row, i) => (
+                  <tr key={i} className="border-b border-abakus-charcoal/5 last:border-0">
+                    {row.map((cell, j) => (
+                      <td key={j} className="px-4 py-2 text-abakus-charcoal">
+                        {typeof cell === 'number' ? cell.toLocaleString(undefined, { maximumFractionDigits: 0 }) : cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard label="Professional Sqft Demand" value={formatValue(result.professional_sqft_by_place[selectedPlace]?.allocated_sqft ?? 0, 'count')} />
+            <StatCard
+              label="Medical Sqft Demand"
+              value={`${formatValue(result.medical_sqft_by_place_low[selectedPlace]?.allocated_sqft ?? 0, 'count')} -- ${formatValue(result.medical_sqft_by_place_high[selectedPlace]?.allocated_sqft ?? 0, 'count')}`}
+            />
+            <StatCard label="City" value={result.professional_sqft_by_place[selectedPlace]?.display_name ?? selectedPlace} />
+          </div>
+        )}
       </div>
 
       <DownloadSheetsButton filename={`${countyLabel || 'Office Demand'}.xlsx`} sheets={sheets} />

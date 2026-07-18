@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, BLS_SECTORS, type BlsDashboardResult, type GeographySummary, type GeoType } from '../lib/api'
-import { blsChartMeta } from '../lib/blsChartMeta'
+import { api, NAICS_SECTORS, type BlsDashboardResult, type GeographySummary, type GeoType, type LineChart } from '../lib/api'
+import { blsChartMeta, blsDashboardSheets } from '../lib/blsChartMeta'
 import LineChartCard from '../components/charts/LineChartCard'
-import StackedBarChartCard from '../components/charts/StackedBarChartCard'
+import MultiGeoLineChartCard from '../components/charts/MultiGeoLineChartCard'
 import SectorToggles from '../components/SectorToggles'
-import { dashboardSheets } from '../lib/download'
 import DownloadSheetsButton from '../components/DownloadSheetsButton'
 
 const MIN_YEAR = 2014 // QCEW's bulk open-data API only serves a rolling window, not back to 2010
@@ -16,8 +15,7 @@ export default function BlsDashboard() {
   const [geo, setGeo] = useState<(GeographySummary & { geo_type: GeoType }) | null>(null)
   const [startYear, setStartYear] = useState(MIN_YEAR)
   const [endYear, setEndYear] = useState(MAX_YEAR)
-  const [viewMode, setViewMode] = useState<'percent' | 'count'>('percent')
-  const [sectors, setSectors] = useState<string[]>(BLS_SECTORS.map((s) => s.code))
+  const [sectors, setSectors] = useState<string[]>(NAICS_SECTORS.map((s) => s.code))
   const [dashboard, setDashboard] = useState<BlsDashboardResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -58,14 +56,6 @@ export default function BlsDashboard() {
           To
           <YearSelect value={endYear} onChange={setEndYear} min={startYear} />
         </label>
-        <ToggleGroup
-          value={viewMode}
-          onChange={(v) => setViewMode(v as 'percent' | 'count')}
-          options={[
-            { value: 'percent', label: '%' },
-            { value: 'count', label: '#' },
-          ]}
-        />
       </div>
 
       <SectorToggles selected={sectors} onChange={setSectors} />
@@ -81,15 +71,16 @@ export default function BlsDashboard() {
             if (chart.chart_type === 'line') {
               return <LineChartCard key={key} title={meta.title} format={meta.format} series={chart.series} />
             }
-            return (
-              <StackedBarChartCard
-                key={key}
-                title={meta.title}
-                categories={chart.categories}
-                rawCategories={chart.raw_categories}
-                viewMode={viewMode}
-              />
+            // multi_line: one line per sector, all on one chart -- reuses
+            // MultiGeoLineChartCard by treating each sector label as its
+            // own "geography" (the component only cares about a label +
+            // a per-key line series, not that the key is really a geoid).
+            const labels = Object.keys(chart.series_by_label)
+            const geographies = labels.map((label) => ({ geoid: label, label }))
+            const charts: Record<string, LineChart> = Object.fromEntries(
+              labels.map((label) => [label, { chart_type: 'line' as const, series: chart.series_by_label[label] }])
             )
+            return <MultiGeoLineChartCard key={key} title={meta.title} format={meta.format} geographies={geographies} charts={charts} />
           })}
         </div>
       )}
@@ -97,28 +88,9 @@ export default function BlsDashboard() {
       {dashboard && (
         <DownloadSheetsButton
           filename={`${geo?.display_name ?? geoid} - BLS.xlsx`}
-          sheets={dashboardSheets(dashboard, (key) => blsChartMeta(key).title, viewMode)}
+          sheets={blsDashboardSheets(dashboard, (key) => blsChartMeta(key).title)}
         />
       )}
-    </div>
-  )
-}
-
-function ToggleGroup({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
-  return (
-    <div className="inline-flex rounded-lg border border-abakus-charcoal/15 overflow-hidden">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-            value === opt.value ? 'bg-abakus-charcoal text-white' : 'bg-white text-abakus-charcoal hover:bg-abakus-cream'
-          }`}
-        >
-          {opt.label}
-        </button>
-      ))}
     </div>
   )
 }

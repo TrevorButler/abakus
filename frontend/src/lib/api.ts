@@ -130,9 +130,37 @@ export interface HousingDemandParams {
   b19037_demand_basis: DemandBasis
 }
 
-// The 7 BLS sectors this app tracks -- matches bls_dashboard.ALL_SECTORS on
-// the backend exactly (order: professional sectors, then healthcare).
-export const BLS_SECTORS: { code: string; label: string }[] = [
+// All 20 real 2-digit NAICS sectors -- matches bls_dashboard.NAICS_SECTORS
+// on the backend exactly. Used by the dashboard/comparative views, which
+// show every sector (unlike Office Demand's narrower set below).
+export const NAICS_SECTORS: { code: string; label: string }[] = [
+  { code: '11', label: 'Agriculture, Forestry, Fishing and Hunting' },
+  { code: '21', label: 'Mining, Quarrying, and Oil and Gas Extraction' },
+  { code: '22', label: 'Utilities' },
+  { code: '23', label: 'Construction' },
+  { code: '31-33', label: 'Manufacturing' },
+  { code: '42', label: 'Wholesale Trade' },
+  { code: '44-45', label: 'Retail Trade' },
+  { code: '48-49', label: 'Transportation and Warehousing' },
+  { code: '51', label: 'Information' },
+  { code: '52', label: 'Finance and Insurance' },
+  { code: '53', label: 'Real Estate and Rental and Leasing' },
+  { code: '54', label: 'Professional, Scientific, and Technical Services' },
+  { code: '55', label: 'Management of Companies and Enterprises' },
+  { code: '56', label: 'Administrative and Support and Waste Management and Remediation Services' },
+  { code: '61', label: 'Educational Services' },
+  { code: '62', label: 'Health Care and Social Assistance' },
+  { code: '71', label: 'Arts, Entertainment, and Recreation' },
+  { code: '72', label: 'Accommodation and Food Services' },
+  { code: '81', label: 'Other Services (except Public Administration)' },
+  { code: '92', label: 'Public Administration' },
+]
+
+// Office Demand's narrower 7-sector set (professional + healthcare) --
+// matches bls_dashboard.ALL_SECTORS on the backend exactly. Kept separate
+// from NAICS_SECTORS since the office-demand sqft coefficients only apply
+// to these sectors, not all 20.
+export const OFFICE_DEMAND_SECTORS: { code: string; label: string }[] = [
   { code: '51', label: 'Information' },
   { code: '52', label: 'Finance and Insurance' },
   { code: '53', label: 'Real Estate and Rental and Leasing' },
@@ -142,7 +170,17 @@ export const BLS_SECTORS: { code: string; label: string }[] = [
   { code: '62', label: 'Health Care and Social Assistance' },
 ]
 
-export type BlsDashboardResult = Record<string, ChartResult>
+// One line series per sector (raw values, not a percent share), all on one
+// chart -- employment_by_sector/wages_by_sector's shape, distinct from
+// ACS's ChartResult union since ACS has no equivalent "many series on one
+// chart, keyed by an arbitrary label" shape.
+export interface SectorLineChart {
+  chart_type: 'multi_line'
+  series_by_label: Record<string, Record<string, number>>
+}
+
+export type BlsChartResult = LineChart | SectorLineChart
+export type BlsDashboardResult = Record<string, BlsChartResult>
 
 export type BlsRateBasis = '5yr' | '10yr' | 'custom_rate' | 'custom_years'
 
@@ -202,7 +240,8 @@ export interface PumaStat {
 export interface PumaSummary {
   household_size_by_unit_type: Record<string, PumaStat>
   school_children_by_unit_type: Record<string, PumaStat>
-  bedroom_distribution: Record<string, number>
+  household_size_by_bedroom_count: Record<string, PumaStat>
+  school_children_by_bedroom_count: Record<string, PumaStat>
 }
 
 export interface AssumptionOption {
