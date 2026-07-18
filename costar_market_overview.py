@@ -199,13 +199,19 @@ def build_market_overview_workbook(markets: list[dict]) -> Workbook:
             # skipping over it, chopping each line into disconnected
             # segments (confirmed: this bug didn't show up in testing
             # because the original test fed identical, gap-free data to
-            # every market). Years are written as strings, not numbers --
-            # defensive against Excel's own axis-type reinterpretation at
-            # render time treating a numeric category axis as a date axis
-            # (where "1990" would misread as a serial date near 1900).
+            # every market). Years stay as real integers -- a previous
+            # attempt to write them as strings "defensively" actually
+            # introduced a worse bug: openpyxl's category reference is
+            # always emitted as <numRef> regardless of the referenced
+            # cells' actual type (confirmed by inspecting the raw chart
+            # XML), so string year cells under a numRef reference is a
+            # type mismatch that likely caused Excel's broken legend/
+            # series rendering -- not the date-axis risk this was meant
+            # to guard against, which turned out not to be real (catAx was
+            # already declared correctly either way).
             table = [[label], ["Year"] + market_names]
             for y in years:
-                table.append([str(y)] + [class_data[m].get(label, {}).get(y) for m in market_names])
+                table.append([y] + [class_data[m].get(label, {}).get(y) for m in market_names])
             end_row = write_table(ws, table, start_row=row_cursor, start_col=1)
 
             header_row = row_cursor + 1
