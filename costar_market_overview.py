@@ -3,8 +3,11 @@ costar_market_overview.py
 
 Cleans CoStar market-metric grid exports for up to 6 named markets and
 produces one tab per property class that received at least one upload: a
-Year x Market table per metric, plus one line chart per metric (one line
-per market that uploaded that class).
+Year x Market table per metric, plus one chart per metric (one series per
+market that uploaded that class). Rent and vacancy are rate/price metrics
+that read as a trend line; everything else (inventory, absorption,
+deliveries) is a per-year volume that reads better as a clustered bar
+(confirmed by explicit feedback).
 
 Retail/Office/Industrial & Flex genuinely share one raw column format
 (confirmed by direct inspection of CommercialDataGrid.xlsx) so one parser
@@ -34,7 +37,7 @@ from io import BytesIO
 
 import openpyxl
 from openpyxl import Workbook
-from openpyxl.chart import LineChart, Reference
+from openpyxl.chart import BarChart, LineChart, Reference
 
 from excel_export import unique_sheet_name, write_table
 
@@ -87,6 +90,14 @@ METRICS_BY_CLASS = {
 }
 
 YEAR_RE = re.compile(r"(\d{4})")
+
+
+def _is_rate_metric(label: str) -> bool:
+    """Only rent and vacancy are rate/price metrics that read well as a
+    trend line -- everything else (inventory, absorption, deliveries) is a
+    per-year volume that reads better as a bar, confirmed by explicit
+    feedback."""
+    return "rent" in label.lower() or "vacan" in label.lower()
 
 
 def _find_data_sheet(wb):
@@ -188,30 +199,47 @@ def build_market_overview_workbook(markets: list[dict]) -> Workbook:
             # skipping over it, chopping each line into disconnected
             # segments (confirmed: this bug didn't show up in testing
             # because the original test fed identical, gap-free data to
-            # every market).
+            # every market). Years are written as strings, not numbers --
+            # defensive against Excel's own axis-type reinterpretation at
+            # render time treating a numeric category axis as a date axis
+            # (where "1990" would misread as a serial date near 1900).
             table = [[label], ["Year"] + market_names]
             for y in years:
-                table.append([y] + [class_data[m].get(label, {}).get(y) for m in market_names])
+                table.append([str(y)] + [class_data[m].get(label, {}).get(y) for m in market_names])
             end_row = write_table(ws, table, start_row=row_cursor, start_col=1)
 
             header_row = row_cursor + 1
-            chart = LineChart()
+            data_ref = Reference(ws, min_col=2, max_col=1 + len(market_names), min_row=header_row, max_row=header_row + len(years))
+            cats_ref = Reference(ws, min_col=1, min_row=header_row + 1, max_row=header_row + len(years))
+
+            if _is_rate_metric(label):
+                chart = LineChart()
+                chart.display_blanks = "span"  # connect the line across a market's missing years instead of breaking
+                chart.add_data(data_ref, titles_from_data=True)
+                chart.set_categories(cats_ref)
+                # Explicit per-series styling so the line itself reads
+                # clearly against its markers, and gaps (real blanks now)
+                # still draw a continuous line across the missing year
+                # rather than stopping.
+                for series in chart.series:
+                    series.smooth = False
+                    series.marker.symbol = "circle"
+                    series.marker.size = 5
+            else:
+                # Volume/count metrics (inventory, absorption, deliveries)
+                # -- clustered (not stacked) bars, since each market's value
+                # is independently meaningful, not part of one combined
+                # whole.
+                chart = BarChart()
+                chart.type = "col"
+                chart.grouping = "clustered"
+                chart.add_data(data_ref, titles_from_data=True)
+                chart.set_categories(cats_ref)
+
             chart.title = label
             chart.y_axis.title = label
             chart.x_axis.title = "Year"
             chart.height, chart.width = 7, 16
-            chart.display_blanks = "span"  # connect the line across a market's missing years instead of breaking
-            data_ref = Reference(ws, min_col=2, max_col=1 + len(market_names), min_row=header_row, max_row=header_row + len(years))
-            cats_ref = Reference(ws, min_col=1, min_row=header_row + 1, max_row=header_row + len(years))
-            chart.add_data(data_ref, titles_from_data=True)
-            chart.set_categories(cats_ref)
-            # Explicit per-series styling so the line itself reads clearly
-            # against its markers, and gaps (real blanks now) still draw a
-            # continuous line across the missing year rather than stopping.
-            for series in chart.series:
-                series.smooth = False
-                series.marker.symbol = "circle"
-                series.marker.size = 5
             ws.add_chart(chart, f"A{end_row + 2}")
             row_cursor = end_row + 2 + 15  # clear the ~15-row-tall chart before the next metric's table
 

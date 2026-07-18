@@ -139,18 +139,34 @@ def _summary_row(agg: dict, pct: float) -> list:
     ]
 
 
+# Unit Type Summary table columns: A=Community+Unit Type, B=Unit Type,
+# C=#, D=%, E=Min SF, F=Max SF, G=Avg SF, H=Min Rent, I=Max Rent, ...
+_UTS_MIN_SF_COL = 5
+_UTS_MAX_SF_COL = 6
+_UTS_MIN_RENT_COL = 8
+_UTS_MAX_RENT_COL = 9
+
+
 def _build_unit_type_summary(wb: Workbook, parsed: list[dict]):
+    """One block per unit type (Total row + one row per comp that has that
+    unit type), a blank row, a range-scatter chart -- same construction as
+    Comp Summary's "by Unit Type" chart, but scoped to one unit type at a
+    time with each segment representing a comp rather than a unit type
+    (confirmed by explicit feedback), then a gap before the next unit
+    type's block."""
     ws = wb.create_sheet("Unit Type Summary")
     unit_types = _all_unit_types(parsed)
     grand_total = sum(r["units"] for c in parsed for r in c["rows"])
+    header = ["Community + Unit Type", "Unit Type"] + SUMMARY_HEADER
 
-    table = [["Community + Unit Type", "Unit Type"] + SUMMARY_HEADER]
+    row_cursor = 1
     for ut in unit_types:
         bucket = [r for c in parsed for r in c["rows"] if r["unit_type"] == ut]
         if not bucket:
             continue
         agg = _aggregate(bucket)
-        table.append(["Total", ut] + _summary_row(agg, agg["count"] / grand_total if grand_total else 0))
+        table = [header, ["Total", ut] + _summary_row(agg, agg["count"] / grand_total if grand_total else 0)]
+        comp_first_offset = len(table)  # 0-based offset of the first per-comp row within `table`
         for c in parsed:
             comp_bucket = [r for r in c["rows"] if r["unit_type"] == ut]
             if not comp_bucket:
@@ -158,7 +174,17 @@ def _build_unit_type_summary(wb: Workbook, parsed: list[dict]):
             comp_total = sum(r["units"] for r in c["rows"])
             agg2 = _aggregate(comp_bucket)
             table.append([f"{c['name']} {ut}", ut] + _summary_row(agg2, agg2["count"] / comp_total if comp_total else 0))
-    write_table(ws, table)
+        end_row = write_table(ws, table, start_row=row_cursor, start_col=1)
+
+        comp_first_row = row_cursor + comp_first_offset
+        comp_last_row = end_row - 1
+        if comp_last_row >= comp_first_row:
+            _add_range_scatter_chart(
+                ws, comp_first_row, comp_last_row, anchor_row=end_row + 2, title=f"{ut} -- Comps",
+                min_sf_col=_UTS_MIN_SF_COL, max_sf_col=_UTS_MAX_SF_COL,
+                min_rent_col=_UTS_MIN_RENT_COL, max_rent_col=_UTS_MAX_RENT_COL,
+            )
+        row_cursor = end_row + 2 + 20  # blank row + ~20-row chart clearance + blank row before the next unit type
 
 
 def _build_comp_summary(wb: Workbook, parsed: list[dict]):
@@ -212,7 +238,7 @@ def _build_comp_summary(wb: Workbook, parsed: list[dict]):
     unit_last_data_row = unit_end - 2  # excludes the "All Unit Types" row -- the range chart is per real unit type only
 
     _add_bubble_chart(ws, community_first_data_row, community_last_data_row, anchor_row=unit_end + 2)
-    _add_range_scatter_chart(ws, unit_first_data_row, unit_last_data_row, anchor_row=unit_end + 22)
+    _add_range_scatter_chart(ws, unit_first_data_row, unit_last_data_row, anchor_row=unit_end + 22, title="Comp Summary by Unit Type")
 
 
 # Community table columns: A=Comp#, B=Community, C=#, D=%, E=Min SF, F=Max SF,
@@ -247,18 +273,25 @@ def _add_bubble_chart(ws, first_row: int, last_row: int, anchor_row: int):
     ws.add_chart(chart, f"A{anchor_row}")
 
 
-def _add_range_scatter_chart(ws, first_row: int, last_row: int, anchor_row: int):
-    """One 2-point line segment per unit type: (Min SF, Min Rent) -> (Max
-    SF, Max Rent), matching the reference template's range-scatter
-    construction exactly."""
+def _add_range_scatter_chart(
+    ws, first_row: int, last_row: int, anchor_row: int, title: str,
+    min_sf_col: int = _UNIT_MIN_SF_COL, max_sf_col: int = _UNIT_MAX_SF_COL,
+    min_rent_col: int = _UNIT_MIN_RENT_COL, max_rent_col: int = _UNIT_MAX_RENT_COL,
+):
+    """One 2-point line segment per row in [first_row, last_row]: (Min SF,
+    Min Rent) -> (Max SF, Max Rent), matching the reference template's
+    range-scatter construction exactly. Column positions are parameterized
+    (not just the Comp Summary tab's layout) so the same construction can
+    be reused on Unit Type Summary -- there, each segment is one comp
+    within a given unit type rather than one unit type within the market."""
     chart = ScatterChart()
-    chart.title = "Comp Summary by Unit Type"
+    chart.title = title
     chart.x_axis.title = "SF"
     chart.y_axis.title = "Rent"
     chart.height, chart.width = 10, 18
     for row in range(first_row, last_row + 1):
-        xref = Reference(ws, min_col=_UNIT_MIN_SF_COL, max_col=_UNIT_MAX_SF_COL, min_row=row, max_row=row)
-        yref = Reference(ws, min_col=_UNIT_MIN_RENT_COL, max_col=_UNIT_MAX_RENT_COL, min_row=row, max_row=row)
+        xref = Reference(ws, min_col=min_sf_col, max_col=max_sf_col, min_row=row, max_row=row)
+        yref = Reference(ws, min_col=min_rent_col, max_col=max_rent_col, min_row=row, max_row=row)
         chart.series.append(Series(yref, xref))
     ws.add_chart(chart, f"A{anchor_row}")
 
