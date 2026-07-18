@@ -341,8 +341,13 @@ async function postFormJson<T>(path: string, formData: FormData): Promise<T> {
 // which sheet on the output workbook) a Market Overview file belongs to.
 export type CostarPropertyClass = 'multifamily' | 'retail' | 'office' | 'industrial_flex' | 'hospitality'
 
+export interface SmartReSubdivision {
+  name: string
+  count: number
+}
+
 export interface SmartReSubdivisionsResult {
-  subdivisions: string[]
+  subdivisions: SmartReSubdivision[]
 }
 
 export const api = {

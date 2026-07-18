@@ -165,6 +165,20 @@ def _year_class_table(rows: list[dict]) -> tuple[list[int], dict]:
     return years, by_class
 
 
+def _decade_class_table(rows: list[dict]) -> tuple[list[int], dict]:
+    """(decades, {class: {decade: sf}}) -- SF built per class per decade,
+    the source table for the single stacked-bar chart."""
+    decades_present = [r["decade"] for r in rows if r["decade"]]
+    if not decades_present:
+        return [], {}
+    decades = list(range(min(decades_present), max(decades_present) + 10, 10))
+    by_class = {c: {d: 0 for d in decades} for c in BROAD_CLASSES}
+    for r in rows:
+        if r["decade"]:
+            by_class[r["type"]][r["decade"]] += r["rba"]
+    return decades, by_class
+
+
 def build_heartbeat_sheet(wb: Workbook, rows: list[dict]):
     ws = wb.create_sheet("Heartbeat")
 
@@ -189,7 +203,9 @@ def build_heartbeat_sheet(wb: Workbook, rows: list[dict]):
 
     # Table 2: Year x Class SF-built, starting a few columns over so it
     # doesn't collide with table 1 -- same layout convention as the
-    # reference template (two tables side by side on one sheet).
+    # reference template (two tables side by side on one sheet). Raw
+    # year-level data, kept for reference/pivoting even though the chart
+    # below is decade-level.
     years, by_class = _year_class_table(rows)
     start_col = len(header1) + 2
     header2 = ["Year"] + BROAD_CLASSES + ["Total"]
@@ -199,24 +215,33 @@ def build_heartbeat_sheet(wb: Workbook, rows: list[dict]):
         table2.append([y] + row_vals + [sum(row_vals)])
     write_table(ws, table2, start_row=1, start_col=start_col)
 
-    # One bar chart per class -- x=Year, y=that class's SF built that year.
-    if years:
-        year_col = start_col
-        chart_anchor_row = len(table2) + 3
-        for i, cls in enumerate(BROAD_CLASSES):
-            data_col = start_col + 1 + i
-            chart = BarChart()
-            chart.title = f"{cls} SF Over Time"
-            chart.y_axis.title = "SF"
-            chart.x_axis.title = "Year"
-            chart.height, chart.width = 7, 16
-            data_ref = Reference(ws, min_col=data_col, min_row=1, max_row=1 + len(years))
-            cats_ref = Reference(ws, min_col=year_col, min_row=2, max_row=1 + len(years))
-            chart.add_data(data_ref, titles_from_data=True)
-            chart.set_categories(cats_ref)
-            anchor_row = chart_anchor_row + (i // 2) * 15
-            anchor_col_letter = "A" if i % 2 == 0 else "L"
-            ws.add_chart(chart, f"{anchor_col_letter}{anchor_row}")
+    # Table 3: Decade x Class SF-built, backing the one stacked bar chart --
+    # the primary deliverable of this sheet (replaces what was originally 7
+    # separate per-class year-level charts, per explicit feedback that a
+    # single "delivered by decade" view is more useful than all of them).
+    decades, decade_by_class = _decade_class_table(rows)
+    table3_start_row = len(table2) + 3
+    header3 = ["Decade"] + BROAD_CLASSES + ["Total"]
+    table3 = [header3]
+    for d in decades:
+        row_vals = [decade_by_class[c][d] for c in BROAD_CLASSES]
+        table3.append([f"{d}s"] + row_vals + [sum(row_vals)])
+    write_table(ws, table3, start_row=table3_start_row, start_col=start_col)
+
+    if decades:
+        chart = BarChart()
+        chart.type = "col"
+        chart.grouping = "stacked"
+        chart.overlap = 100
+        chart.title = "Commercial Real Estate Delivered by Decade"
+        chart.y_axis.title = "SF"
+        chart.x_axis.title = "Decade"
+        chart.height, chart.width = 10, 20
+        data_ref = Reference(ws, min_col=start_col + 1, max_col=start_col + len(BROAD_CLASSES), min_row=table3_start_row, max_row=table3_start_row + len(decades))
+        cats_ref = Reference(ws, min_col=start_col, min_row=table3_start_row + 1, max_row=table3_start_row + len(decades))
+        chart.add_data(data_ref, titles_from_data=True)
+        chart.set_categories(cats_ref)
+        ws.add_chart(chart, f"A{table3_start_row + len(table3) + 3}")
 
     return ws
 

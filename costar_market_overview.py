@@ -148,9 +148,17 @@ def build_market_overview_workbook(markets: list[dict]) -> Workbook:
             years = sorted({y for series in class_data.values() for y in series.get(label, {})})
             if not years:
                 continue
+            # None (a true blank cell), not "" -- a market missing a given
+            # year is common in real CoStar data (different markets have
+            # different history depths), and writing "" instead of a real
+            # blank made Excel treat every gap as a hard break rather than
+            # skipping over it, chopping each line into disconnected
+            # segments (confirmed: this bug didn't show up in testing
+            # because the original test fed identical, gap-free data to
+            # every market).
             table = [[label], ["Year"] + market_names]
             for y in years:
-                table.append([y] + [class_data[m].get(label, {}).get(y, "") for m in market_names])
+                table.append([y] + [class_data[m].get(label, {}).get(y) for m in market_names])
             end_row = write_table(ws, table, start_row=row_cursor, start_col=1)
 
             header_row = row_cursor + 1
@@ -159,10 +167,18 @@ def build_market_overview_workbook(markets: list[dict]) -> Workbook:
             chart.y_axis.title = label
             chart.x_axis.title = "Year"
             chart.height, chart.width = 7, 16
+            chart.display_blanks = "span"  # connect the line across a market's missing years instead of breaking
             data_ref = Reference(ws, min_col=2, max_col=1 + len(market_names), min_row=header_row, max_row=header_row + len(years))
             cats_ref = Reference(ws, min_col=1, min_row=header_row + 1, max_row=header_row + len(years))
             chart.add_data(data_ref, titles_from_data=True)
             chart.set_categories(cats_ref)
+            # Explicit per-series styling so the line itself reads clearly
+            # against its markers, and gaps (real blanks now) still draw a
+            # continuous line across the missing year rather than stopping.
+            for series in chart.series:
+                series.smooth = False
+                series.marker.symbol = "circle"
+                series.marker.size = 5
             ws.add_chart(chart, f"A{end_row + 2}")
             row_cursor = end_row + 2 + 15  # clear the ~15-row-tall chart before the next metric's table
 

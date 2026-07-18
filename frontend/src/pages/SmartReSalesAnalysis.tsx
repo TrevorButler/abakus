@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, type SmartReSubdivision } from '../lib/api'
 import MultiFileUploader, { type UploadItem } from '../components/MultiFileUploader'
 import { downloadFromResponse } from '../lib/download'
 
@@ -12,7 +12,7 @@ const MAX_FILES = 20
 // re-send them without asking the user to upload twice.
 export default function SmartReSalesAnalysis() {
   const [items, setItems] = useState<UploadItem[]>([{ id: crypto.randomUUID(), name: '', file: null }])
-  const [subdivisions, setSubdivisions] = useState<string[] | null>(null)
+  const [subdivisions, setSubdivisions] = useState<SmartReSubdivision[] | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   const [filter, setFilter] = useState('')
   const [loadingSubs, setLoadingSubs] = useState(false)
@@ -21,10 +21,15 @@ export default function SmartReSalesAnalysis() {
 
   const files = items.map((it) => it.file).filter((f): f is File => f !== null)
 
+  // Already sorted by transaction count (descending) by the backend --
+  // real neighborhoods with meaningful volume surface first, ahead of the
+  // placeholder/junk subdivision values SmartRE's own export writes when
+  // its address match fails (e.g. "0", "N/a", a bare city name), which
+  // otherwise looked identical to a real pick in a plain alphabetical list.
   const filteredSubdivisions = useMemo(() => {
     if (!subdivisions) return []
     const q = filter.trim().toLowerCase()
-    return q ? subdivisions.filter((s) => s.toLowerCase().includes(q)) : subdivisions
+    return q ? subdivisions.filter((s) => s.name.toLowerCase().includes(q)) : subdivisions
   }, [subdivisions, filter])
 
   function handleItemsChange(next: UploadItem[]) {
@@ -98,9 +103,14 @@ export default function SmartReSalesAnalysis() {
           />
           <div className="max-h-72 overflow-y-auto border border-abakus-charcoal/10 rounded-lg divide-y divide-abakus-charcoal/5">
             {filteredSubdivisions.map((s) => (
-              <label key={s} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-abakus-cream cursor-pointer">
-                <input type="checkbox" checked={selected.includes(s)} onChange={() => toggleSubdivision(s)} />
-                <span>{s}</span>
+              <label key={s.name} className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm hover:bg-abakus-cream cursor-pointer">
+                <span className="flex items-center gap-2">
+                  <input type="checkbox" checked={selected.includes(s.name)} onChange={() => toggleSubdivision(s.name)} />
+                  <span>{s.name}</span>
+                </span>
+                <span className="text-abakus-light-grey text-xs shrink-0">
+                  {s.count} sale{s.count === 1 ? '' : 's'}
+                </span>
               </label>
             ))}
             {filteredSubdivisions.length === 0 && <p className="text-xs text-abakus-light-grey/70 text-center py-4">No matches.</p>}

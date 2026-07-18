@@ -143,12 +143,19 @@ def parse_sales_file(file_bytes: bytes) -> list[dict]:
     return rows
 
 
-def list_subdivisions(files_bytes: list[bytes]) -> list[str]:
-    subs = set()
+def list_subdivisions(files_bytes: list[bytes]) -> list[dict]:
+    """Returns [{"name": str, "count": int}], sorted by count descending.
+    A plain alphabetical name list buries real neighborhoods among
+    placeholder/junk values SmartRE itself writes when its own address-to-
+    subdivision match fails ("0", "N/a", a bare city name, etc.) -- surfacing
+    the transaction count up front (and sorting by it) makes it obvious
+    which subdivisions are actually worth picking, rather than a user
+    unknowingly selecting one with a single transaction."""
+    counts: dict = {}
     for fb in files_bytes:
         for r in parse_sales_file(fb):
-            subs.add(r["subdivision"])
-    return sorted(subs)
+            counts[r["subdivision"]] = counts.get(r["subdivision"], 0) + 1
+    return sorted(({"name": name, "count": c} for name, c in counts.items()), key=lambda x: (-x["count"], x["name"]))
 
 
 def _filter_rows(rows: list[dict], new_resale, type_code) -> list[dict]:
