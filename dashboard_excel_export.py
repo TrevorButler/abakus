@@ -72,6 +72,10 @@ def bls_chart_title(key: str, naics_sectors: dict) -> str:
         return "Employment by Sector"
     if key == "avg_pay_by_sector":
         return "Average Pay by Sector"
+    if key == "total_employment_trend":
+        return "Total Jobs (All Industries)"
+    if key == "total_avg_pay_trend":
+        return "Average Pay (All Industries)"
 
     for metric, suffix in (("employment", "Employment"), ("wage", "Total Wages"), ("avg_pay", "Average Annual Pay")):
         prefix = f"{metric}_trend_"

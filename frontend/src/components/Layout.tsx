@@ -1,18 +1,55 @@
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import logoFull from '../assets/brand/logo-full.png'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../lib/api'
 
+// Same 5 domains as Landing.tsx's DOMAINS, reduced to a nav-bar shape --
+// lets a user jump straight from inside one module (e.g. /acs/single/123)
+// to another without backing out to "/" first.
+const MODULES = [
+  { to: '/acs', label: 'ACS' },
+  { to: '/bls', label: 'BLS' },
+  { to: '/pums', label: 'PUMS' },
+  { to: '/costar', label: 'CoStar' },
+  { to: '/smartre', label: 'SmartRE' },
+]
+
 export default function Layout({ children }: { children: ReactNode }) {
   const { loading, user } = useAuth()
+  const location = useLocation()
 
   return (
     <div className="min-h-screen flex flex-col bg-abakus-cream">
-      <header className="border-b border-abakus-charcoal/10 px-6 py-4 flex items-center justify-between">
-        <Link to="/" className="inline-block">
-          <img src={logoFull} alt="Abakus" className="h-8 w-auto" />
-        </Link>
+      <header className="border-b border-abakus-charcoal/10 px-6 py-4 flex items-center justify-between gap-6 flex-wrap">
+        <div className="flex items-center gap-6 flex-wrap">
+          <Link to="/" className="inline-block">
+            <img src={logoFull} alt="Abakus" className="h-8 w-auto" />
+          </Link>
+          {user && (
+            <nav className="flex items-center gap-4 text-sm flex-wrap">
+              <Link
+                to="/"
+                className={location.pathname === '/' ? 'text-abakus-charcoal font-medium' : 'text-abakus-light-grey hover:text-abakus-charcoal transition-colors'}
+              >
+                Home
+              </Link>
+              {MODULES.map((mod) => (
+                <Link
+                  key={mod.to}
+                  to={mod.to}
+                  className={
+                    location.pathname.startsWith(mod.to)
+                      ? 'text-abakus-charcoal font-medium'
+                      : 'text-abakus-light-grey hover:text-abakus-charcoal transition-colors'
+                  }
+                >
+                  {mod.label}
+                </Link>
+              ))}
+            </nav>
+          )}
+        </div>
         {user && (
           <div className="flex items-center gap-4 text-sm text-abakus-light-grey">
             <span>{user.email}</span>

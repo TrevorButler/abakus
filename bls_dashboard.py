@@ -144,6 +144,30 @@ def avg_pay_by_sector(engine, geoid, sectors: list, start_year: int, end_year: i
     return {"chart_type": "multi_line", "series_by_label": series_by_label}
 
 
+def total_employment_trend(engine, geoid, start_year: int, end_year: int) -> dict:
+    """QCEW's real 'Total, All Industries' aggregate (TOTAL_INDUSTRY_CODE =
+    '10', own_code='0') -- not a sum of the 20 tracked sectors above, which
+    would double-count multi-sector employers and omit anything outside
+    those 20 codes (this row is published directly by BLS at the county
+    level, already pulled by etl_bls_qcew_pull.py but unused until now)."""
+    data = fetch_sector_series(engine, geoid, [TOTAL_INDUSTRY_CODE], start_year, end_year)
+    return {"chart_type": "line", "series": {y: v[TOTAL_INDUSTRY_CODE]["employment"] for y, v in data.items() if TOTAL_INDUSTRY_CODE in v}}
+
+
+def total_avg_pay_trend(engine, geoid, start_year: int, end_year: int) -> dict:
+    """Same all-industries total row as total_employment_trend, average
+    annual pay instead of employment count."""
+    data = fetch_sector_series(engine, geoid, [TOTAL_INDUSTRY_CODE], start_year, end_year)
+    return {
+        "chart_type": "line",
+        "series": {
+            y: v[TOTAL_INDUSTRY_CODE]["avg_pay"]
+            for y, v in data.items()
+            if TOTAL_INDUSTRY_CODE in v and v[TOTAL_INDUSTRY_CODE]["avg_pay"] is not None
+        },
+    }
+
+
 def sector_employment_trend(engine, geoid, naics_code: str, start_year: int, end_year: int) -> dict:
     data = fetch_sector_series(engine, geoid, [naics_code], start_year, end_year)
     return {"chart_type": "line", "series": {y: v[naics_code]["employment"] for y, v in data.items() if naics_code in v}}
@@ -163,15 +187,19 @@ def sector_avg_pay_trend(engine, geoid, naics_code: str, start_year: int, end_ye
 
 
 def _run_dashboard_queries(engine, geoid, start_year: int, end_year: int, sectors: list) -> dict:
-    """Concurrently runs employment_by_sector/avg_pay_by_sector plus one
-    employment/wage/avg-pay trend chart per selected sector -- same
-    ThreadPoolExecutor rationale as demographics_dashboard.py's
-    _run_chart_functions (independent read-only queries, no data
-    dependency between them, overlapping cold-cache disk-wait time)."""
+    """Concurrently runs employment_by_sector/avg_pay_by_sector, the
+    all-industries total_employment_trend/total_avg_pay_trend (independent
+    of sector selection), plus one employment/wage/avg-pay trend chart per
+    selected sector -- same ThreadPoolExecutor rationale as
+    demographics_dashboard.py's _run_chart_functions (independent
+    read-only queries, no data dependency between them, overlapping
+    cold-cache disk-wait time)."""
     with ThreadPoolExecutor(max_workers=MAX_DASHBOARD_WORKERS) as pool:
         futures = {
             "employment_by_sector": pool.submit(employment_by_sector, engine, geoid, sectors, start_year, end_year),
             "avg_pay_by_sector": pool.submit(avg_pay_by_sector, engine, geoid, sectors, start_year, end_year),
+            "total_employment_trend": pool.submit(total_employment_trend, engine, geoid, start_year, end_year),
+            "total_avg_pay_trend": pool.submit(total_avg_pay_trend, engine, geoid, start_year, end_year),
         }
         for code in sectors:
             futures[f"employment_trend_{code}"] = pool.submit(sector_employment_trend, engine, geoid, code, start_year, end_year)
@@ -194,6 +222,6 @@ def get_full_dashboard_region(geoids: list, start_year: int, end_year: int, sect
 
 
 def list_charts() -> list:
-    return ["employment_by_sector", "avg_pay_by_sector"] + [
+    return ["employment_by_sector", "avg_pay_by_sector", "total_employment_trend", "total_avg_pay_trend"] + [
         f"{metric}_trend_{code}" for code in NAICS_SECTORS for metric in ("employment", "wage", "avg_pay")
     ]

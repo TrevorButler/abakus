@@ -20,6 +20,10 @@ export function blsChartMeta(key: string): BlsChartMeta {
   // most total headcount, not compensation levels, which is what this
   // combined view is actually meant to answer.
   if (key === 'avg_pay_by_sector') return { title: 'Average Pay by Sector', format: 'dollars' }
+  // QCEW's real "Total, All Industries" row (own_code='0') -- not a sum of
+  // the 20 tracked sectors above, independent of sector selection.
+  if (key === 'total_employment_trend') return { title: 'Total Jobs (All Industries)', format: 'count' }
+  if (key === 'total_avg_pay_trend') return { title: 'Average Pay (All Industries)', format: 'dollars' }
 
   const trendMatch = key.match(/^(employment|wage|avg_pay)_trend_([\d-]+)$/)
   if (trendMatch) {

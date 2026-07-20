@@ -42,17 +42,17 @@ export default function Landing() {
       <p className="text-abakus-light-grey text-lg mb-12 text-center max-w-xl">
         Pick a data source. You'll choose an analysis mode next.
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
+      <div className="flex flex-col gap-4 w-full max-w-5xl">
         {DOMAINS.map((domain) => (
           <Link
             key={domain.to}
             to={domain.to}
-            className="group flex flex-col rounded-2xl border border-abakus-charcoal/10 bg-white overflow-hidden transition-shadow hover:shadow-lg"
+            className="group flex items-stretch rounded-2xl border border-abakus-charcoal/10 bg-white overflow-hidden transition-shadow hover:shadow-lg"
           >
-            <div className={`h-2 ${domain.color}`} />
-            <div className="p-6 flex flex-col gap-2">
+            <div className={`w-2 shrink-0 ${domain.color}`} />
+            <div className="flex-1 p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <h2 className="text-xl font-medium text-abakus-charcoal">{domain.title}</h2>
-              <p className="text-abakus-light-grey text-sm leading-relaxed">{domain.description}</p>
+              <p className="text-abakus-light-grey text-sm leading-relaxed sm:max-w-md sm:text-right">{domain.description}</p>
             </div>
           </Link>
         ))}
