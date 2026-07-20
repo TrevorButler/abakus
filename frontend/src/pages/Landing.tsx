@@ -64,7 +64,7 @@ export default function Landing() {
           to="/master"
           className="bg-abakus-charcoal text-white font-medium px-8 py-3 rounded-2xl hover:opacity-90 transition-opacity"
         >
-          Build a Master Analysis Deck
+          Build Report
         </Link>
       </div>
     </div>
