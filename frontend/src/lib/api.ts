@@ -520,4 +520,88 @@ export const api = {
       return postFormBlob('/smartre/sales-analysis', fd)
     },
   },
+
+  master: {
+    // Regional mode is aggregated-only (no Separated option, confirmed
+    // with the user -- see api.py's post_master_deck docstring). The
+    // comparison fields are entirely optional/independent from acsCharts/
+    // blsCharts -- a separate opt-in section with its own chart-topic
+    // selection, up to 5 comparison geographies (always flat single
+    // geographies, not themselves regional, mirroring the normal
+    // Comparative Analysis flow's own max-5 cap). CoStar/SmartRE uploads
+    // land in later stages -- those fields get added to this same
+    // FormData then, matching costar.marketOverview's indexed-field
+    // convention from the start so the request shape doesn't change
+    // underneath the wizard later.
+    generateDeck: (params: {
+      placeType: GeoType
+      mode: 'single' | 'regional'
+      geoids: string[]
+      startYear: number
+      endYear: number
+      acsCharts: string[]
+      blsCharts: string[]
+      comparisonGeoids?: string[]
+      comparisonAcsCharts?: string[]
+      comparisonBlsCharts?: string[]
+      heartbeatFile?: File | null
+      marketOverviewMarkets?: { name: string; files: Partial<Record<CostarPropertyClass, File>> }[]
+      smartreFiles?: File[]
+      smartreSubdivisions?: string[]
+      comparisonCostar?: {
+        geoid: string
+        heartbeatFile?: File | null
+        marketOverviewMarkets?: { name: string; files: Partial<Record<CostarPropertyClass, File>> }[]
+      }[]
+    }) => {
+      const fd = new FormData()
+      fd.append('place_type', params.placeType)
+      fd.append('mode', params.mode)
+      fd.append('geoids', params.geoids.join(','))
+      fd.append('start_year', String(params.startYear))
+      fd.append('end_year', String(params.endYear))
+      fd.append('acs_charts', params.acsCharts.join(','))
+      fd.append('bls_charts', params.blsCharts.join(','))
+      if (params.comparisonGeoids?.length) {
+        fd.append('comparison_geoids', params.comparisonGeoids.join(','))
+        fd.append('comparison_acs_charts', (params.comparisonAcsCharts ?? []).join(','))
+        fd.append('comparison_bls_charts', (params.comparisonBlsCharts ?? []).join(','))
+      }
+      if (params.heartbeatFile) {
+        fd.append('subject_costar_properties', params.heartbeatFile)
+      }
+      if (params.marketOverviewMarkets?.length) {
+        fd.append('subject_market_count', String(params.marketOverviewMarkets.length))
+        params.marketOverviewMarkets.forEach((m, i) => {
+          fd.append(`subject_market_${i}_name`, m.name)
+          for (const [cls, file] of Object.entries(m.files)) {
+            if (file) fd.append(`subject_market_${i}_${cls}`, file)
+          }
+        })
+      }
+      if (params.smartreFiles?.length && params.smartreSubdivisions?.length) {
+        params.smartreFiles.forEach((f) => fd.append('subject_smartre_files', f))
+        params.smartreSubdivisions.forEach((s) => fd.append('subject_smartre_subdivisions', s))
+      }
+      // Per-comparison-geo CoStar repeater -- same Heartbeat/Market
+      // Overview field shape as the subject's own upload above, just
+      // "comparison_{geoid}_"-prefixed per geography.
+      params.comparisonCostar?.forEach((c) => {
+        if (c.heartbeatFile) {
+          fd.append(`comparison_${c.geoid}_costar_properties`, c.heartbeatFile)
+        }
+        const markets = c.marketOverviewMarkets ?? []
+        if (markets.length) {
+          fd.append(`comparison_${c.geoid}_market_count`, String(markets.length))
+          markets.forEach((m, i) => {
+            fd.append(`comparison_${c.geoid}_market_${i}_name`, m.name)
+            for (const [cls, file] of Object.entries(m.files)) {
+              if (file) fd.append(`comparison_${c.geoid}_market_${i}_${cls}`, file)
+            }
+          })
+        }
+      })
+      return postFormBlob('/master/deck', fd)
+    },
+  },
 }

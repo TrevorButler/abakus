@@ -13,6 +13,9 @@
 # modules read uploaded workbooks and write native, editable Excel charts
 # at request time -- the only viable way to get real chart objects into an
 # .xlsx without a paid SheetJS tier (see costar_heartbeat.py's docstring).
+# python-pptx is the same idea for the master module's PowerPoint deck --
+# native, editable chart objects on slides, not rasterized images (verified
+# via a real save/reopen/read-back round trip before adopting it).
 fastapi==0.139.0
 uvicorn==0.51.0
 sqlalchemy==2.0.51
@@ -21,4 +24,5 @@ authlib==1.7.2
 itsdangerous==2.2.0
 httpx==0.28.1
 openpyxl==3.1.5
+python-pptx==1.0.2
 python-multipart==0.0.20

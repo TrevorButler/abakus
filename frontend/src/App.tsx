@@ -19,6 +19,7 @@ import CostarHeartbeat from './pages/CostarHeartbeat'
 import CostarMarketOverview from './pages/CostarMarketOverview'
 import CostarMultifamilyComps from './pages/CostarMultifamilyComps'
 import SmartReSalesAnalysis from './pages/SmartReSalesAnalysis'
+import MasterModule from './pages/MasterModule'
 import Admin from './pages/Admin'
 
 function App() {
@@ -49,6 +50,8 @@ function App() {
         <Route path="/costar/multifamily-comps" element={<CostarMultifamilyComps />} />
 
         <Route path="/smartre" element={<SmartReSalesAnalysis />} />
+
+        <Route path="/master" element={<MasterModule />} />
 
         <Route path="/admin" element={<Admin />} />
       </Routes>

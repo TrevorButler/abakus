@@ -15,6 +15,7 @@ bypass, since the OAuth roundtrip needs a real Google client.
 """
 
 import os
+import re
 from io import BytesIO
 from typing import Literal, Optional
 
@@ -38,6 +39,7 @@ import costar_multifamily_comps as cmc
 import dashboard_excel_export as dex
 import demographics_dashboard as dd
 import housing_demand_projections as hdp
+import master_export as mx
 import pums_household_averages as pha
 import smartre_sales as ss
 from excel_export import workbook_to_bytes
@@ -702,6 +704,208 @@ async def post_smartre_sales_analysis(request: Request):
 
 
 # ============================================================
+# Master Module (guided PPTX deck)
+# ============================================================
+
+# Stage 3 of the build order: single geography OR regional (aggregated-only
+# -- no Separated option, confirmed with the user: the whole point of this
+# deck is one coherent report, and per-geography detail is already covered
+# by the not-yet-built Comparative section). ACS + BLS charts only --
+# comparison section and CoStar/SmartRE uploads land in later stages per
+# the plan. Multipart form (not a JSON body) since later stages add
+# optional file uploads alongside these same scalar fields, and a request
+# can't mix JSON with files in one body -- matches the
+# costar_market_overview indexed-field convention from the start rather
+# than switching shape later.
+@data_router.post("/master/deck")
+async def post_master_deck(request: Request):
+    form = await request.form()
+    place_type = form.get("place_type", "county")
+    mode = form.get("mode", "single")
+    if mode not in ("single", "regional"):
+        raise HTTPException(status_code=400, detail="mode must be 'single' or 'regional'")
+
+    geoids = form.get("geoids", "")
+    geoid_list = [g.strip() for g in geoids.split(",") if g.strip()]
+    if not geoid_list:
+        raise HTTPException(status_code=400, detail="geoids must contain at least one geoid")
+    if mode == "single" and len(geoid_list) != 1:
+        raise HTTPException(status_code=400, detail="Single mode requires exactly one geoid")
+    if mode == "regional" and len(geoid_list) > 50:
+        raise HTTPException(status_code=400, detail="Regional mode supports at most 50 geoids")
+    for g in geoid_list:
+        geo_row = _require_geography(g, return_row=True)
+        if geo_row["geo_type"] != place_type:
+            raise HTTPException(status_code=400, detail=f"geoid {g} is not a {place_type}")
+
+    try:
+        start_year = int(form.get("start_year", 2010))
+        end_year = int(form.get("end_year", 2024))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="start_year/end_year must be integers")
+    if start_year > end_year:
+        raise HTTPException(status_code=400, detail="start_year must be <= end_year")
+
+    acs_charts = [c.strip() for c in (form.get("acs_charts") or "").split(",") if c.strip()]
+    bls_charts = [c.strip() for c in (form.get("bls_charts") or "").split(",") if c.strip()]
+    unknown_acs = [c for c in acs_charts if c not in dd.CHART_FUNCTIONS]
+    if unknown_acs:
+        raise HTTPException(status_code=400, detail=f"Unknown ACS chart(s): {unknown_acs}")
+
+    # Comparative Analysis section (Stage 4) -- always a flat list of up to
+    # 5 single geographies (not itself regional, even when the subject is),
+    # mirroring the normal Comparative Analysis flow's own max-5 cap. The
+    # chart-key selections here are entirely independent of acs_charts/
+    # bls_charts above -- the user picks separately what belongs in this
+    # section vs. the single-geography sections.
+    comparison_geoids = [g.strip() for g in (form.get("comparison_geoids") or "").split(",") if g.strip()]
+    if len(comparison_geoids) > 5:
+        raise HTTPException(status_code=400, detail="Comparison supports at most 5 geographies")
+    for g in comparison_geoids:
+        geo_row = _require_geography(g, return_row=True)
+        if geo_row["geo_type"] != place_type:
+            raise HTTPException(status_code=400, detail=f"comparison geoid {g} is not a {place_type}")
+
+    comparison_acs_charts = [c.strip() for c in (form.get("comparison_acs_charts") or "").split(",") if c.strip()]
+    comparison_bls_charts = [c.strip() for c in (form.get("comparison_bls_charts") or "").split(",") if c.strip()]
+    unknown_comp_acs = [c for c in comparison_acs_charts if c not in dd.CHART_FUNCTIONS]
+    if unknown_comp_acs:
+        raise HTTPException(status_code=400, detail=f"Unknown comparison ACS chart(s): {unknown_comp_acs}")
+
+    geo_labels = _geo_labels(geoid_list)
+    geo_label = geo_labels.get(geoid_list[0], geoid_list[0]) if mode == "single" else _region_label(geoid_list, geo_labels)
+
+    need_acs = bool(acs_charts) or bool(comparison_acs_charts)
+    acs_dashboard = {}
+    if need_acs:
+        if mode == "single":
+            acs_dashboard = dd.get_full_dashboard(geoid_list[0], start_year, end_year, engine=engine)
+        else:
+            acs_dashboard = dd.get_full_dashboard_region(geoid_list, start_year, end_year, engine=engine)
+
+    # Sectors span BOTH selections so a sector picked only in the
+    # comparison picker still gets fetched for the subject too (needed
+    # since the Comparative section reuses this same subject dashboard).
+    need_bls = bool(bls_charts) or bool(comparison_bls_charts)
+    bls_dashboard = {}
+    sectors = []
+    bls_start_year = start_year
+    if need_bls:
+        bls_start_year = bls.clamp_start_year(start_year)
+        sectors = _sectors_from_bls_charts(bls_charts + comparison_bls_charts)
+        bls_geoid_map = _resolve_bls_geoids(geoid_list, place_type)
+        bls_geoids = sorted(set(bls_geoid_map.values()))
+        if bls_geoids:
+            if mode == "single":
+                bls_dashboard = bls.get_full_dashboard(bls_geoids[0], bls_start_year, end_year, sectors, engine=engine)
+            else:
+                bls_dashboard = bls.get_full_dashboard_region(bls_geoids, bls_start_year, end_year, sectors, engine=engine)
+
+    comparisons = []
+    comparison_costar = []
+    if comparison_geoids:
+        comp_labels = _geo_labels(comparison_geoids)
+        comp_bls_map = _resolve_bls_geoids(comparison_geoids, place_type) if need_bls else {}
+        for g in comparison_geoids:
+            comp_acs = dd.get_full_dashboard(g, start_year, end_year, engine=engine) if comparison_acs_charts else {}
+            comp_bls_geoid = comp_bls_map.get(g)
+            comp_bls = (
+                bls.get_full_dashboard(comp_bls_geoid, bls_start_year, end_year, sectors, engine=engine)
+                if comparison_bls_charts and comp_bls_geoid
+                else {}
+            )
+            comparisons.append((comp_labels.get(g, g), comp_acs, comp_bls))
+
+        # Per-comparison-geo CoStar repeater (Stage 6) -- same Heartbeat/
+        # Market Overview shape as the subject's own upload below, just
+        # "comparison_{geoid}_"-prefixed since each comparison geography
+        # gets its own independent, optional upload.
+        for g in comparison_geoids:
+            g_heartbeat_upload = form.get(f"comparison_{g}_costar_properties")
+            g_heartbeat_bytes = (
+                await g_heartbeat_upload.read() if (g_heartbeat_upload is not None and hasattr(g_heartbeat_upload, "read")) else None
+            )
+            try:
+                g_market_count = int(form.get(f"comparison_{g}_market_count", 0))
+            except (TypeError, ValueError):
+                g_market_count = 0
+            g_markets = []
+            for i in range(g_market_count):
+                name = form.get(f"comparison_{g}_market_{i}_name")
+                if not name:
+                    continue
+                files = {}
+                for cls in cmo.PROPERTY_CLASSES:
+                    upload = form.get(f"comparison_{g}_market_{i}_{cls}")
+                    if upload is not None and hasattr(upload, "read"):
+                        files[cls] = await upload.read()
+                if files:
+                    g_markets.append({"name": name, "files": files})
+            if g_heartbeat_bytes or g_markets:
+                try:
+                    g_heartbeat_rows = ch.parse_properties(g_heartbeat_bytes) if g_heartbeat_bytes else None
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+                comparison_costar.append((comp_labels.get(g, g), g_heartbeat_rows, g_markets))
+
+    # Subject-only CoStar uploads (Stage 5) -- Heartbeat (one file) and
+    # Market Overview (up to 6 named markets, each with up to 5 optional
+    # per-class files), same field-naming convention as the standalone
+    # /costar/market-overview route but "subject_"-prefixed to distinguish
+    # from the comparison-geo repeater above.
+    heartbeat_upload = form.get("subject_costar_properties")
+    heartbeat_bytes = await heartbeat_upload.read() if (heartbeat_upload is not None and hasattr(heartbeat_upload, "read")) else None
+
+    try:
+        subject_market_count = int(form.get("subject_market_count", 0))
+    except (TypeError, ValueError):
+        subject_market_count = 0
+    market_overview_markets = []
+    for i in range(subject_market_count):
+        name = form.get(f"subject_market_{i}_name")
+        if not name:
+            continue
+        files = {}
+        for cls in cmo.PROPERTY_CLASSES:
+            upload = form.get(f"subject_market_{i}_{cls}")
+            if upload is not None and hasattr(upload, "read"):
+                files[cls] = await upload.read()
+        if files:
+            market_overview_markets.append({"name": name, "files": files})
+
+    # Subject-only SmartRE upload (Stage 6) -- same two-part shape as
+    # /smartre/sales-analysis (repeated files + repeated subdivisions),
+    # "subject_"-prefixed. Filtered to the selected subdivisions here
+    # (mirrors build_sales_analysis_workbook's own filtering) so
+    # master_export.py only ever sees already-scoped rows.
+    smartre_uploads = form.getlist("subject_smartre_files")
+    smartre_subdivisions = form.getlist("subject_smartre_subdivisions")
+    smartre_rows = None
+    if smartre_uploads and smartre_subdivisions:
+        try:
+            smartre_bytes = [await u.read() for u in smartre_uploads if hasattr(u, "read")]
+            selected_subdivisions = set(smartre_subdivisions)
+            all_smartre_rows = []
+            for fb in smartre_bytes:
+                all_smartre_rows.extend(ss.parse_sales_file(fb))
+            smartre_rows = [r for r in all_smartre_rows if r["subdivision"] in selected_subdivisions]
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        heartbeat_rows = ch.parse_properties(heartbeat_bytes) if heartbeat_bytes else None
+        prs = mx.build_master_deck(
+            geo_label, acs_dashboard, bls_dashboard, acs_charts, bls_charts,
+            comparisons=comparisons, comparison_acs=comparison_acs_charts, comparison_bls=comparison_bls_charts,
+            heartbeat_rows=heartbeat_rows, market_overview_markets=market_overview_markets,
+            smartre_rows=smartre_rows, comparison_costar=comparison_costar,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _deck_response(prs, f"{geo_label}.pptx")
+
+
+# ============================================================
 # Shared helpers
 # ============================================================
 
@@ -752,6 +956,62 @@ def _geo_labels(geoid_list: list) -> dict:
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT geoid, display_name FROM geography WHERE geoid = ANY(:geoids)"), {"geoids": geoid_list})
         return {r.geoid: r.display_name for r in rows}
+
+
+def _resolve_bls_geoids(geoid_list: list, place_type: str) -> dict:
+    """BLS/QCEW is only published at county granularity -- when the
+    master module's subject/comparison geography is a place, this
+    resolves each place to its containing county for BLS purposes only
+    (ACS keeps the original place geoid throughout). Returns
+    {original_geoid: county_geoid} -- geography.county_geoid is already
+    populated for every place row (NULL for county rows), so no schema
+    change was needed. A dict (not a deduped list) preserves per-geoid
+    identity: the subject/region fetch dedupes via set(mapping.values())
+    since it sums across counties either way, but a comparison entry
+    needs to know which county belongs to *it specifically*, not a pooled
+    set shared with every other comparison entry."""
+    if place_type != "place":
+        return {g: g for g in geoid_list}
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT geoid, county_geoid FROM geography WHERE geoid = ANY(:geoids) AND county_geoid IS NOT NULL"),
+            {"geoids": geoid_list},
+        )
+        return {r.geoid: r.county_geoid for r in rows}
+
+
+_BLS_SECTOR_KEY_RE = re.compile(r"^(?:employment|wage|avg_pay)_trend_([\w-]+)$")
+
+
+def _sectors_from_bls_charts(bls_charts: list) -> list:
+    """Derives which NAICS sectors need querying from the selected BLS
+    chart keys themselves, rather than taking a separate sectors= field --
+    a per-sector trend chart (e.g. employment_trend_23) being selected is
+    already an unambiguous statement of which sector it needs. The 4 fixed
+    keys (employment_by_sector, avg_pay_by_sector, total_*) don't reference
+    a specific sector, so they don't contribute here; get_full_dashboard
+    handles an empty sectors list fine (those 4 keys don't depend on it)."""
+    codes = {m.group(1) for key in bls_charts if (m := _BLS_SECTOR_KEY_RE.match(key))}
+    return sorted(codes)
+
+
+def _region_label(geoid_list: list, geo_labels: dict) -> str:
+    """Cover-slide/filename label for a regional master-module deck --
+    named geographies when there are few enough to read comfortably,
+    otherwise a plain count (matches RegionalAnalysis.tsx's own "N
+    geographies summed as one region" phrasing for the same tradeoff)."""
+    names = [geo_labels.get(g, g) for g in geoid_list]
+    if len(names) <= 3:
+        return ", ".join(names)
+    return f"{len(names)} Geographies (Region)"
+
+
+def _deck_response(prs, filename: str) -> StreamingResponse:
+    return StreamingResponse(
+        BytesIO(mx.pptx_to_bytes(prs)),
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ============================================================

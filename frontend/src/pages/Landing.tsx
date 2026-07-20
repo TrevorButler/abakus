@@ -57,6 +57,16 @@ export default function Landing() {
           </Link>
         ))}
       </div>
+
+      <div className="w-full max-w-5xl mt-8 pt-8 border-t border-abakus-charcoal/10 flex flex-col items-center gap-2">
+        <p className="text-abakus-light-grey text-sm">Want it all in one place?</p>
+        <Link
+          to="/master"
+          className="bg-abakus-charcoal text-white font-medium px-8 py-3 rounded-2xl hover:opacity-90 transition-opacity"
+        >
+          Build a Master Analysis Deck
+        </Link>
+      </div>
     </div>
   )
 }

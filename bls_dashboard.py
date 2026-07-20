@@ -27,6 +27,20 @@ MAX_DASHBOARD_WORKERS = 10
 
 TOTAL_INDUSTRY_CODE = "10"
 
+# QCEW's bulk open-data API only serves a rolling window, not back to ACS's
+# 2010 -- etl_bls_qcew_pull.py's own MIN_YEAR is the real source of truth
+# for what's actually in bls_qcew_estimates. Duplicated here (rather than
+# imported from the ETL script) since this is the query-time floor callers
+# need, not an ETL-time concern; frontend pages have long enforced this via
+# their own MIN_YEAR=2014 constant, but nothing on the backend query path
+# did until now -- a caller passing start_year=2010 silently got thinner
+# series instead of an error.
+BLS_MIN_YEAR = 2014
+
+
+def clamp_start_year(start_year: int) -> int:
+    return max(start_year, BLS_MIN_YEAR)
+
 # All 20 real 2-digit NAICS/QCEW sectors -- the dashboard/comparative views'
 # full sector set. '99' (Unclassified) and '10' (Total) are deliberately
 # excluded: confirmed via a live QCEW pull that '99' isn't a real industry
