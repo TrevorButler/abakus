@@ -875,10 +875,9 @@ async def post_master_deck(request: Request):
 
     # Subject-only SmartRE upload (Stage 6) -- same two-part shape as
     # /smartre/sales-analysis (repeated files + repeated subdivisions),
-    # "subject_"-prefixed. Filtered to the selected subdivisions AND to
-    # New-construction sales here (mirrors build_sales_analysis_workbook's
-    # own filtering -- comp research only looks at New sales, never
-    # Resale) so master_export.py only ever sees already-scoped rows.
+    # "subject_"-prefixed. Filtered to the selected subdivisions here
+    # (mirrors build_sales_analysis_workbook's own filtering) so
+    # master_export.py only ever sees already-scoped rows.
     smartre_uploads = form.getlist("subject_smartre_files")
     smartre_subdivisions = form.getlist("subject_smartre_subdivisions")
     smartre_rows = None
@@ -889,9 +888,7 @@ async def post_master_deck(request: Request):
             all_smartre_rows = []
             for fb in smartre_bytes:
                 all_smartre_rows.extend(ss.parse_sales_file(fb))
-            smartre_rows = [
-                r for r in all_smartre_rows if r["subdivision"] in selected_subdivisions and r["new_resale"] == "New"
-            ]
+            smartre_rows = [r for r in all_smartre_rows if r["subdivision"] in selected_subdivisions]
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
