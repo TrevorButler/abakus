@@ -253,7 +253,7 @@ export default function MasterModule() {
   return (
     <div className="flex-1 flex flex-col items-center px-6 py-12 gap-8">
       <div className="text-center">
-        <h1 className="text-3xl font-medium text-abakus-charcoal mb-2">Master Module</h1>
+        <h1 className="text-3xl font-medium text-abakus-charcoal mb-2">Report Builder</h1>
         <p className="text-abakus-light-grey">Build one PowerPoint deck with live charts across ACS and BLS data.</p>
       </div>
 
