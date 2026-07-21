@@ -87,6 +87,7 @@ export default function MasterModule() {
   // populated (a geoid with no entry yet just renders empty inputs).
   const [comparisonHeartbeatFiles, setComparisonHeartbeatFiles] = useState<Record<string, File | null>>({})
   const [comparisonMarkets, setComparisonMarkets] = useState<Record<string, MarketState[]>>({})
+  const [reportTitle, setReportTitle] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -242,8 +243,9 @@ export default function MasterModule() {
               }
             })
           : [],
+        reportTitle: reportTitle.trim() || undefined,
       })
-      .then((blob) => downloadFromResponse(blob, `${regionLabel}.pptx`))
+      .then((blob) => downloadFromResponse(blob, `${reportTitle.trim() || regionLabel}.pptx`))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }
@@ -550,6 +552,17 @@ export default function MasterModule() {
 
       {step === 'generate' && selectedGeoids.length > 0 && (
         <div className="flex flex-col items-center gap-4">
+          <label className="flex flex-col items-center gap-1 w-full max-w-sm">
+            <span className="text-sm text-abakus-charcoal self-start">Report name (optional)</span>
+            <input
+              type="text"
+              value={reportTitle}
+              onChange={(e) => setReportTitle(e.target.value)}
+              placeholder={regionLabel}
+              className="border border-abakus-charcoal/20 rounded-lg px-3 py-2 bg-white text-sm w-full"
+            />
+            <span className="text-xs text-abakus-light-grey self-start">Printed on the title slide -- leave blank to use the geography name.</span>
+          </label>
           <p className="text-abakus-charcoal text-center">
             Ready to generate a deck for <span className="font-medium">{regionLabel}</span> ({startYear}-{endYear}),{' '}
             {totalSelected} chart{totalSelected === 1 ? '' : 's'} selected.

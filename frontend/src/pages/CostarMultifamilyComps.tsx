@@ -11,15 +11,21 @@ export default function CostarMultifamilyComps() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const ready = items.filter((it) => it.name.trim() && it.file)
-  const canGenerate = ready.length > 0
+  // Batch-uploading (MultiFileUploader now supports multi-select) makes it
+  // easy to attach several files before naming any of them -- unlike the
+  // old one-at-a-time flow, an unnamed comp here blocks generation
+  // entirely instead of silently being dropped, so nothing gets left out
+  // by accident.
+  const withFiles = items.filter((it) => it.file)
+  const unnamed = withFiles.filter((it) => !it.name.trim())
+  const canGenerate = withFiles.length > 0 && unnamed.length === 0
 
   function generate() {
     if (!canGenerate) return
     setLoading(true)
     setError(null)
     api.costar
-      .multifamilyComps(ready.map((it) => ({ name: it.name.trim(), file: it.file as File })))
+      .multifamilyComps(withFiles.map((it) => ({ name: it.name.trim(), file: it.file as File })))
       .then((blob) => downloadFromResponse(blob, 'Multifamily Comps.xlsx'))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
@@ -37,6 +43,11 @@ export default function CostarMultifamilyComps() {
 
       <div className="w-full max-w-lg bg-white rounded-xl border border-abakus-charcoal/10 p-6 flex flex-col gap-4">
         <MultiFileUploader items={items} onChange={setItems} maxItems={MAX_COMPS} namePlaceholder="Property name" accept=".xlsx,.xls" />
+        {unnamed.length > 0 && (
+          <p className="text-abakus-warm-400 text-xs text-center">
+            Name {unnamed.length === 1 ? 'the remaining comp' : `all ${unnamed.length} remaining comps`} before generating.
+          </p>
+        )}
         <button
           type="button"
           onClick={generate}

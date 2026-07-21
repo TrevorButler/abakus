@@ -3,14 +3,22 @@ smartre_sales.py
 
 Cleans up to 20 SmartRE sales-download files (each capped at ~1,000 rows by
 SmartRE's own export limit, confirmed identical schema across split files)
-into 12 cuts of sale-price/volume-over-time analysis for a user-chosen
+into 4 cuts of sale-price/volume-over-time analysis for a user-chosen
 comp set of Subdivisions, plus a combined sales list.
 
-12 cuts (confirmed): Overall/New/Resale (all types, 3) + Single-
-Family/Townhome/Condo (New+Resale combined, 3) + each of those 3 types x
-New/Resale (6) = 12. Each cut gets a scatter chart (sale date x price, one
-point per sale -- no connecting line, this is a dispersion plot, not a
-trend line) and a stacked bar chart (year x price-bin counts).
+4 cuts (New-construction only, confirmed): Overall + Single-Family/
+Townhome/Condo. Resale transactions are excluded entirely before any cut
+is built -- comp research only ever looks at a subdivision's New sales,
+never Resale (explicit feedback) -- so the New/Resale/Overall dimension
+that an earlier 12-cut version had collapses to nothing once every row
+reaching a cut is already New. The subdivision picker (list_subdivisions,
+below) is NOT filtered this way -- its counts intentionally still span
+every Sold transaction, since it's just helping a user judge which
+subdivisions have enough volume to be worth picking at all, independent of
+what the final comp analysis itself narrows to. Each cut gets a scatter
+chart (sale date x price, one point per sale -- no connecting line, this
+is a dispersion plot, not a trend line) and a stacked bar chart (year x
+price-bin counts).
 
 Only Status == "Sold" rows are used -- "Active" rows are current listings,
 not completed sales, and their Price is an asking price rather than a
@@ -45,20 +53,14 @@ MONTH_NAMES = {
 }
 DATE_RE = re.compile(r"([A-Za-z]+)\s+(\d{4})")
 
-# 12 cuts: (sheet name, New/Resale filter or None, Type code filter or None).
+# 4 cuts: (sheet name, Type code filter or None) -- New/Resale is no longer
+# a cut dimension since build_sales_analysis_workbook() filters every row to
+# New before any cut runs (see module docstring).
 CUTS = [
-    ("Overall", None, None),
-    ("New", "New", None),
-    ("Resale", "Resale", None),
-    ("Single-Family", None, "SF"),
-    ("Townhome", None, "T"),
-    ("Condo", None, "C"),
-    ("Single-Family - New", "New", "SF"),
-    ("Single-Family - Resale", "Resale", "SF"),
-    ("Townhome - New", "New", "T"),
-    ("Townhome - Resale", "Resale", "T"),
-    ("Condo - New", "New", "C"),
-    ("Condo - Resale", "Resale", "C"),
+    ("Overall", None),
+    ("Single-Family", "SF"),
+    ("Townhome", "T"),
+    ("Condo", "C"),
 ]
 
 
@@ -195,13 +197,10 @@ def list_subdivisions(files_bytes: list[bytes]) -> list[dict]:
     return sorted(({"name": name, "count": c} for name, c in counts.items()), key=lambda x: (-x["count"], x["name"]))
 
 
-def _filter_rows(rows: list[dict], new_resale, type_code) -> list[dict]:
-    out = rows
-    if new_resale is not None:
-        out = [r for r in out if r["new_resale"] == new_resale]
-    if type_code is not None:
-        out = [r for r in out if r["type"] == type_code]
-    return out
+def _filter_rows(rows: list[dict], type_code) -> list[dict]:
+    if type_code is None:
+        return rows
+    return [r for r in rows if r["type"] == type_code]
 
 
 def _build_cut_sheet(wb: Workbook, name: str, rows: list[dict], used_names: set):
@@ -255,14 +254,18 @@ def build_sales_analysis_workbook(files_bytes: list[bytes], subdivisions: list[s
         all_rows.extend(parse_sales_file(fb))
     selected = set(subdivisions)
     rows = [r for r in all_rows if r["subdivision"] in selected]
+    # Comp research only ever looks at New-construction sales, never Resale
+    # (explicit feedback) -- filtered here, upstream of every cut and the
+    # Combined Sales list, not in list_subdivisions()'s picker counts above.
+    rows = [r for r in rows if r["new_resale"] == "New"]
     if not rows:
-        raise ValueError("No sold rows found for the selected subdivisions")
+        raise ValueError("No New-construction sold rows found for the selected subdivisions")
 
     wb = Workbook()
     wb.remove(wb.active)
     used_names: set = set()
-    for name, new_resale, type_code in CUTS:
-        _build_cut_sheet(wb, name, _filter_rows(rows, new_resale, type_code), used_names)
+    for name, type_code in CUTS:
+        _build_cut_sheet(wb, name, _filter_rows(rows, type_code), used_names)
 
     ws = wb.create_sheet(unique_sheet_name("Combined Sales", used_names))
     header = ["New/Resale", "Type", "Subdivision", "Price", "Sqft", "Date", "County", "Zip", "High School"]

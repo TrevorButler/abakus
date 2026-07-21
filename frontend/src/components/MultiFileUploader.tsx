@@ -27,9 +27,28 @@ export default function MultiFileUploader({
   namePlaceholder = 'Name',
   accept,
 }: Props) {
-  function addItem() {
-    if (items.length >= maxItems) return
-    onChange([...items, { id: crypto.randomUUID(), name: '', file: null }])
+  // Native multi-select (the file picker's own ctrl/shift-click or "select
+  // all") -- selected files first backfill any empty slots (so the
+  // starting blank row doesn't linger unused), then append new rows for
+  // the rest, up to maxItems. Per explicit feedback: batch-selecting many
+  // files at once should be possible instead of one "+ Add a file" click
+  // per file.
+  function handleBatchSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
+    const next = [...items]
+    for (const f of files) {
+      const emptyIdx = next.findIndex((it) => !it.file)
+      if (emptyIdx !== -1) {
+        next[emptyIdx] = { ...next[emptyIdx], file: f }
+      } else if (next.length < maxItems) {
+        next.push({ id: crypto.randomUUID(), name: '', file: f })
+      } else {
+        break
+      }
+    }
+    onChange(next)
+    e.target.value = ''
   }
 
   function updateItem(id: string, patch: Partial<UploadItem>) {
@@ -55,9 +74,10 @@ export default function MultiFileUploader({
         />
       ))}
       {items.length < maxItems && (
-        <button type="button" onClick={addItem} className="self-start text-abakus-blue hover:underline text-sm">
-          + Add {items.length > 0 ? 'another' : 'a'} file ({items.length}/{maxItems})
-        </button>
+        <label className="self-start flex items-center gap-2 border border-dashed border-abakus-charcoal/25 rounded-lg px-3 py-2 text-sm text-abakus-blue hover:bg-abakus-cream transition-colors cursor-pointer">
+          <input type="file" accept={accept} multiple className="hidden" onChange={handleBatchSelect} />
+          + Add files ({items.length}/{maxItems}) -- select multiple at once
+        </label>
       )}
     </div>
   )

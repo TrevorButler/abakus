@@ -553,6 +553,7 @@ export const api = {
         heartbeatFile?: File | null
         marketOverviewMarkets?: { name: string; files: Partial<Record<CostarPropertyClass, File>> }[]
       }[]
+      reportTitle?: string
     }) => {
       const fd = new FormData()
       fd.append('place_type', params.placeType)
@@ -601,6 +602,9 @@ export const api = {
           })
         }
       })
+      if (params.reportTitle) {
+        fd.append('report_title', params.reportTitle)
+      }
       return postFormBlob('/master/deck', fd)
     },
   },

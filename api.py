@@ -875,9 +875,10 @@ async def post_master_deck(request: Request):
 
     # Subject-only SmartRE upload (Stage 6) -- same two-part shape as
     # /smartre/sales-analysis (repeated files + repeated subdivisions),
-    # "subject_"-prefixed. Filtered to the selected subdivisions here
-    # (mirrors build_sales_analysis_workbook's own filtering) so
-    # master_export.py only ever sees already-scoped rows.
+    # "subject_"-prefixed. Filtered to the selected subdivisions AND to
+    # New-construction sales here (mirrors build_sales_analysis_workbook's
+    # own filtering -- comp research only looks at New sales, never
+    # Resale) so master_export.py only ever sees already-scoped rows.
     smartre_uploads = form.getlist("subject_smartre_files")
     smartre_subdivisions = form.getlist("subject_smartre_subdivisions")
     smartre_rows = None
@@ -888,9 +889,16 @@ async def post_master_deck(request: Request):
             all_smartre_rows = []
             for fb in smartre_bytes:
                 all_smartre_rows.extend(ss.parse_sales_file(fb))
-            smartre_rows = [r for r in all_smartre_rows if r["subdivision"] in selected_subdivisions]
+            smartre_rows = [
+                r for r in all_smartre_rows if r["subdivision"] in selected_subdivisions and r["new_resale"] == "New"
+            ]
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+
+    # User-typed report name (optional) -- printed on the title slide in
+    # place of geo_label; the download filename still prefers it too, same
+    # fallback-to-geo_label behavior as the title slide itself.
+    report_title = (form.get("report_title") or "").strip() or None
 
     try:
         heartbeat_rows = ch.parse_properties(heartbeat_bytes) if heartbeat_bytes else None
@@ -899,10 +907,11 @@ async def post_master_deck(request: Request):
             comparisons=comparisons, comparison_acs=comparison_acs_charts, comparison_bls=comparison_bls_charts,
             heartbeat_rows=heartbeat_rows, market_overview_markets=market_overview_markets,
             smartre_rows=smartre_rows, comparison_costar=comparison_costar,
+            report_title=report_title,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return _deck_response(prs, f"{geo_label}.pptx")
+    return _deck_response(prs, f"{report_title or geo_label}.pptx")
 
 
 # ============================================================

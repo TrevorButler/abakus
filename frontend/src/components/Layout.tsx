@@ -83,7 +83,7 @@ function SignInScreen() {
           because the data shouldn't be the hard part
         </h1>
         <p className="text-abakus-light-grey text-sm max-w-sm">
-          Abakus helps planners and civic professionals see the forest for the trees.
+          abakus helps planners and civic professionals see the forest for the trees.
         </p>
       </div>
 

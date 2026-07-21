@@ -47,6 +47,10 @@ template's theme1.xml has that <a:clrScheme> block swapped in for
 KB_Standard's, keeping every layout/shape/font untouched -- only the
 color values changed.
 
+Every chart slide's chart sits flush right (per explicit feedback) --
+earlier versions alternated left/right per slide; that alternation is
+gone, every chart now uses the same right-hand geometry.
+
 Known simplification (v1): python-pptx exposes no display-blanks-as toggle
 (unlike openpyxl's chart.display_blanks = "span", added for the Excel
 export after a real gap-rendering bug). A None value in a series renders as
@@ -77,6 +81,7 @@ from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.enum.dml import MSO_THEME_COLOR
+from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
 
 from bls_dashboard import NAICS_SECTORS
@@ -178,20 +183,21 @@ def _market_metric_format(label: str) -> str:
         return "dollars"
     return "count"
 
-# Half-slide chart geometry (13.333" x 7.5" template): a 0.5" left margin,
-# a 6.0"-wide chart, a 0.333" gutter, another 6.0"-wide chart, a 0.5" right
-# margin -- 0.5 + 6.0 + 0.333 + 6.0 + 0.5 = 13.333", so both halves are
-# flush with the slide's own margins on every edge.
+# Chart geometry (13.333" x 7.5" template): every chart sits flush right,
+# a 6.0"-wide chart with a 0.5" right margin -- 13.333 - 0.5 - 6.0 = 6.833".
 _CHART_TOP = Inches(1.7)
 _CHART_HEIGHT = Inches(5.3)
 _CHART_WIDTH = Inches(6.0)
-_CHART_LEFT_X = Inches(0.5)
-_CHART_RIGHT_X = Inches(6.833)
+_CHART_X = Inches(6.833)
 
 # Confirmed by inspecting how the reference deck's own real section-divider
 # slides positioned this placeholder (the layout's own default position is
-# a leftover off-slide draft position, not what any real slide used).
+# a leftover off-slide draft position, not what any real slide used). Also
+# reused, unmodified, as the title slide's own text box position -- only
+# the font size/alignment differ between the two (see _add_title_slide).
 _DIVIDER_TITLE_BOX = (Inches(0.396), Inches(1.362), Inches(12.767), Inches(2.269))
+_DIVIDER_FONT_SIZE = Pt(44)
+_TITLE_FONT_SIZE = Pt(66)  # 150% of the divider size, per explicit feedback
 
 
 def _layout(prs: Presentation, name: str):
@@ -208,14 +214,13 @@ def _placeholder(slide, idx: int):
     return None
 
 
-def _add_chart_slide(prs: Presentation, section: str, metric_title: str, chart_type: str, categories: list, series: dict, side: str, value_format: str = "count"):
+def _add_chart_slide(prs: Presentation, section: str, metric_title: str, chart_type: str, categories: list, series: dict, value_format: str = "count"):
     """One title + one native chart per slide (matches the "real, editable"
-    requirement better than several charts per slide), chart occupying
-    only the left or right half so the slide reads as a real report page,
-    not a chart floating on blank space. section becomes the slide's
-    heading (so every slide names which analysis it belongs to);
-    metric_title becomes a subheading -- the chart itself carries no
-    redundant internal title. value_format: a key into
+    requirement better than several charts per slide), chart flush right so
+    the slide reads as a real report page, not a chart floating on blank
+    space. section becomes the slide's heading (so every slide names which
+    analysis it belongs to); metric_title becomes a subheading -- the chart
+    itself carries no redundant internal title. value_format: a key into
     _AXIS_NUMBER_FORMATS, applied to the value axis so counts/dollars/
     percents read cleanly instead of as raw floats."""
     layout = _layout(prs, "Title Only")
@@ -231,8 +236,7 @@ def _add_chart_slide(prs: Presentation, section: str, metric_title: str, chart_t
         data.add_series(name, values)
 
     xl_type = _CHART_TYPE_MAP[chart_type]
-    left = _CHART_LEFT_X if side == "left" else _CHART_RIGHT_X
-    graphic_frame = slide.shapes.add_chart(xl_type, left, _CHART_TOP, _CHART_WIDTH, _CHART_HEIGHT, data)
+    graphic_frame = slide.shapes.add_chart(xl_type, _CHART_X, _CHART_TOP, _CHART_WIDTH, _CHART_HEIGHT, data)
 
     chart = graphic_frame.chart
     chart.has_title = False
@@ -250,48 +254,63 @@ def _add_chart_slide(prs: Presentation, section: str, metric_title: str, chart_t
     return slide
 
 
-def _line_chart_slide(prs: Presentation, section: str, title: str, series: dict, side: str, value_format: str = "count") -> None:
+def _line_chart_slide(prs: Presentation, section: str, title: str, series: dict, value_format: str = "count") -> None:
     """series: {year: value} -- a single-series 'line' chart (ACS's
     population/median-* charts, BLS's per-sector/total trend charts)."""
     years = sorted(series)
-    _add_chart_slide(prs, section, title, "line", years, {title: [series.get(y) for y in years]}, side, value_format)
+    _add_chart_slide(prs, section, title, "line", years, {title: [series.get(y) for y in years]}, value_format)
 
 
-def _multi_line_chart_slide(prs: Presentation, section: str, title: str, series_by_label: dict, side: str, value_format: str = "count") -> None:
+def _multi_line_chart_slide(prs: Presentation, section: str, title: str, series_by_label: dict, value_format: str = "count") -> None:
     """series_by_label: {label: {year: value}} -- BLS's employment_by_sector/
     avg_pay_by_sector combined multi-series charts."""
     years = sorted({y for s in series_by_label.values() for y in s})
     series = {label: [series_by_label[label].get(y) for y in years] for label in series_by_label}
-    _add_chart_slide(prs, section, title, "multi_line", years, series, side, value_format)
+    _add_chart_slide(prs, section, title, "multi_line", years, series, value_format)
 
 
-def _category_chart_slide(prs: Presentation, section: str, title: str, categories: dict, kind: str, side: str, value_format: str = "count") -> None:
+def _category_chart_slide(prs: Presentation, section: str, title: str, categories: dict, kind: str, value_format: str = "count") -> None:
     """categories: {year: {label: value}} -- ACS's stacked_bar/bar charts
     (category_breakdown()-shaped results)."""
     years = sorted(categories)
     labels = list(dict.fromkeys(label for y in years for label in categories[y]))
     series = {label: [categories[y].get(label) for y in years] for label in labels}
-    _add_chart_slide(prs, section, title, kind, years, series, side, value_format)
+    _add_chart_slide(prs, section, title, kind, years, series, value_format)
 
 
-def add_dashboard_chart_slide(prs: Presentation, section: str, title: str, chart: dict, side: str, value_format: str = "count") -> None:
+def add_dashboard_chart_slide(prs: Presentation, section: str, title: str, chart: dict, value_format: str = "count") -> None:
     """Dispatches one ACS/BLS chart dict (the same {chart_type, ...} shape
     demographics_dashboard.py/bls_dashboard.py already return) to the right
     slide builder -- the single entry point build_master_deck's section
     loop calls per selected chart key."""
     chart_type = chart["chart_type"]
     if chart_type == "line":
-        _line_chart_slide(prs, section, title, chart["series"], side, value_format)
+        _line_chart_slide(prs, section, title, chart["series"], value_format)
     elif chart_type == "multi_line":
-        _multi_line_chart_slide(prs, section, title, chart["series_by_label"], side, value_format)
+        _multi_line_chart_slide(prs, section, title, chart["series_by_label"], value_format)
     elif chart_type in ("stacked_bar", "bar"):
-        _category_chart_slide(prs, section, title, chart["categories"], chart_type, side, value_format)
+        _category_chart_slide(prs, section, title, chart["categories"], chart_type, value_format)
 
 
-def _add_title_slide(prs: Presentation, geo_label: str) -> None:
+def _add_title_slide(prs: Presentation, title_text: str) -> None:
+    """Styled like _add_section_divider (same box position, bold/Arial/
+    accent1 color) so the cover reads as part of the same visual family as
+    the dividers, but centered and at 150% of the divider's font size (44pt
+    -> 66pt) so the cover is unmistakably the title, not just another
+    divider -- per explicit feedback."""
     layout = _layout(prs, "Title Slide")
     slide = prs.slides.add_slide(layout)
-    slide.shapes.title.text_frame.text = geo_label
+    title = slide.shapes.title
+    left, top, width, height = _DIVIDER_TITLE_BOX
+    title.left, title.top, title.width, title.height = left, top, width, height
+    title.text_frame.text = title_text
+    paragraph = title.text_frame.paragraphs[0]
+    paragraph.alignment = PP_ALIGN.CENTER
+    run = paragraph.runs[0]
+    run.font.bold = True
+    run.font.size = _TITLE_FONT_SIZE
+    run.font.name = "Arial"
+    run.font.color.theme_color = MSO_THEME_COLOR.ACCENT_1
 
 
 def _add_section_divider(prs: Presentation, section: str) -> None:
@@ -312,7 +331,7 @@ def _add_section_divider(prs: Presentation, section: str) -> None:
     title.text_frame.text = section
     run = title.text_frame.paragraphs[0].runs[0]
     run.font.bold = True
-    run.font.size = Pt(44)
+    run.font.size = _DIVIDER_FONT_SIZE
     run.font.name = "Arial"
     run.font.color.theme_color = MSO_THEME_COLOR.ACCENT_1
 
@@ -326,20 +345,19 @@ def _transpose_series(series_by_label: dict) -> dict:
     return {y: {label: series_by_label[label].get(y) for label in series_by_label} for y in years}
 
 
-def _add_heartbeat_slides(prs: Presentation, section: str, rows: list, side_toggle: list, slide_count: int) -> int:
+def _add_heartbeat_slides(prs: Presentation, section: str, rows: list) -> None:
     """rows: costar_heartbeat.parse_properties()'s output. Reuses that
     module's own _decade_class_table (the exact table its one Excel chart
     is built from) rather than recomputing the same decade/class rollup
     here -- one stacked-bar slide, same chart the Excel export produces."""
     decades, by_class = _decade_class_table(rows)
     if not decades:
-        return slide_count
+        return
     categories = {d: {c: by_class[c][d] for c in BROAD_CLASSES} for d in decades}
-    _category_chart_slide(prs, section, "Commercial Real Estate Delivered by Decade", categories, "stacked_bar", side_toggle[slide_count % 2], "count")
-    return slide_count + 1
+    _category_chart_slide(prs, section, "Commercial Real Estate Delivered by Decade", categories, "stacked_bar", "count")
 
 
-def _add_market_overview_slides(prs: Presentation, section: str, markets: list, side_toggle: list, slide_count: int) -> int:
+def _add_market_overview_slides(prs: Presentation, section: str, markets: list) -> None:
     """markets: [{"name": str, "files": {class: bytes}}], same shape
     costar_market_overview.build_market_overview_workbook takes. One slide
     per (class, metric) that at least one market uploaded -- market name as
@@ -360,17 +378,14 @@ def _add_market_overview_slides(prs: Presentation, section: str, markets: list, 
             if not series_by_market:
                 continue
             title = f"{CLASS_LABELS[cls]} -- {label}"
-            side = side_toggle[slide_count % 2]
             value_format = _market_metric_format(label)
             if _is_rate_metric(label):
-                _multi_line_chart_slide(prs, section, title, series_by_market, side, value_format)
+                _multi_line_chart_slide(prs, section, title, series_by_market, value_format)
             else:
-                _category_chart_slide(prs, section, title, _transpose_series(series_by_market), "bar", side, value_format)
-            slide_count += 1
-    return slide_count
+                _category_chart_slide(prs, section, title, _transpose_series(series_by_market), "bar", value_format)
 
 
-def _add_smartre_slides(prs: Presentation, section: str, rows: list, side_toggle: list, slide_count: int) -> int:
+def _add_smartre_slides(prs: Presentation, section: str, rows: list) -> None:
     """rows: smartre_sales.parse_sales_file() output, already filtered to
     the user's selected subdivisions (same filtering
     build_sales_analysis_workbook itself does). Only the "Overall" cut's
@@ -379,13 +394,12 @@ def _add_smartre_slides(prs: Presentation, section: str, rows: list, side_toggle
     scatter chart aren't reproduced here."""
     dated_rows = [r for r in rows if r["sale_date"]]
     if not dated_rows:
-        return slide_count
+        return
     years = sorted({r["sale_date"].year for r in dated_rows})
     categories = {y: {b: 0 for b in PRICE_BIN_LABELS} for y in years}
     for r in dated_rows:
         categories[r["sale_date"].year][price_bin_label(r["price"])] += 1
-    _category_chart_slide(prs, section, "Overall -- Sales by Year & Price Bin", categories, "stacked_bar", side_toggle[slide_count % 2], "count")
-    return slide_count + 1
+    _category_chart_slide(prs, section, "Overall -- Sales by Year & Price Bin", categories, "stacked_bar", "count")
 
 
 def _build_cre_section(
@@ -415,19 +429,17 @@ def _build_cre_section(
 
     section = "Commercial Real Estate Analysis"
     _add_section_divider(prs, section)
-    side_toggle = ["left", "right"]
-    slide_count = 0
     if has_heartbeat:
-        slide_count = _add_heartbeat_slides(prs, section, heartbeat_rows, side_toggle, slide_count)
+        _add_heartbeat_slides(prs, section, heartbeat_rows)
     if has_market:
-        slide_count = _add_market_overview_slides(prs, section, market_overview_markets, side_toggle, slide_count)
+        _add_market_overview_slides(prs, section, market_overview_markets)
 
     for label, hb, mk in comparison_costar:
         geo_section = f"{section} -- {label}"
         if hb:
-            slide_count = _add_heartbeat_slides(prs, geo_section, hb, side_toggle, slide_count)
+            _add_heartbeat_slides(prs, geo_section, hb)
         if mk and any(m.get("files") for m in mk):
-            slide_count = _add_market_overview_slides(prs, geo_section, mk, side_toggle, slide_count)
+            _add_market_overview_slides(prs, geo_section, mk)
 
 
 def _comparative_snapshot_categories(geo_categories: list) -> dict:
@@ -453,7 +465,7 @@ def _comparative_snapshot_categories(geo_categories: list) -> dict:
     return out
 
 
-def _add_comparative_snapshot_slide(prs: Presentation, section: str, title: str, chart_type: str, categories_ordered: dict, side: str, value_format: str) -> None:
+def _add_comparative_snapshot_slide(prs: Presentation, section: str, title: str, chart_type: str, categories_ordered: dict, value_format: str) -> None:
     """categories_ordered: from _comparative_snapshot_categories, already in
     display order -- unlike _category_chart_slide, this does NOT re-sort
     the category keys (they're synthetic "{year} -- {geo}" strings, not
@@ -461,7 +473,7 @@ def _add_comparative_snapshot_slide(prs: Presentation, section: str, title: str,
     cats = list(categories_ordered)
     labels = list(dict.fromkeys(lbl for c in cats for lbl in categories_ordered[c]))
     series = {lbl: [categories_ordered[c].get(lbl) for c in cats] for lbl in labels}
-    _add_chart_slide(prs, section, title, chart_type, cats, series, side, value_format)
+    _add_chart_slide(prs, section, title, chart_type, cats, series, value_format)
 
 
 def _build_comparative_section(
@@ -499,8 +511,6 @@ def _build_comparative_section(
 
     section = "Comparative Analysis"
     _add_section_divider(prs, section)
-    side_toggle = ["left", "right"]
-    slide_count = 0
 
     for key in ordered_acs_keys:
         if key not in subject_acs:
@@ -510,8 +520,7 @@ def _build_comparative_section(
         value_format = ACS_CHART_FORMAT.get(key, "count")
         if chart_type == "line":
             series_by_geo = {label: acs[key]["series"] for label, acs, _ in all_geo if key in acs}
-            _multi_line_chart_slide(prs, section, title, series_by_geo, side_toggle[slide_count % 2], value_format)
-            slide_count += 1
+            _multi_line_chart_slide(prs, section, title, series_by_geo, value_format)
         else:
             geo_categories = []
             for label, acs, _ in all_geo:
@@ -523,8 +532,7 @@ def _build_comparative_section(
             snapshot = _comparative_snapshot_categories(geo_categories)
             if snapshot:
                 snapshot_type = "bar" if chart_type == "multi_line" else chart_type
-                _add_comparative_snapshot_slide(prs, section, title, snapshot_type, snapshot, side_toggle[slide_count % 2], value_format)
-                slide_count += 1
+                _add_comparative_snapshot_slide(prs, section, title, snapshot_type, snapshot, value_format)
 
     for key in comparison_bls:
         if key not in subject_bls:
@@ -534,8 +542,7 @@ def _build_comparative_section(
         value_format = _bls_chart_format(key)
         if chart_type == "line":
             series_by_geo = {label: bls_d[key]["series"] for label, _, bls_d in all_geo if key in bls_d}
-            _multi_line_chart_slide(prs, section, title, series_by_geo, side_toggle[slide_count % 2], value_format)
-            slide_count += 1
+            _multi_line_chart_slide(prs, section, title, series_by_geo, value_format)
         else:
             geo_categories = []
             for label, _, bls_d in all_geo:
@@ -547,8 +554,7 @@ def _build_comparative_section(
             snapshot = _comparative_snapshot_categories(geo_categories)
             if snapshot:
                 snapshot_type = "bar" if chart_type == "multi_line" else chart_type
-                _add_comparative_snapshot_slide(prs, section, title, snapshot_type, snapshot, side_toggle[slide_count % 2], value_format)
-                slide_count += 1
+                _add_comparative_snapshot_slide(prs, section, title, snapshot_type, snapshot, value_format)
 
 
 def build_master_deck(
@@ -564,31 +570,34 @@ def build_master_deck(
     market_overview_markets: list = None,
     smartre_rows: list = None,
     comparison_costar: list = None,
+    report_title: str = None,
 ) -> Presentation:
-    """geo_label: display name for the title slide. acs_dashboard/
-    bls_dashboard: already-fetched {chart_key: ChartResult} dicts (empty
-    dict if that domain had nothing selected). selected_acs/selected_bls:
-    the chart keys the user actually opted into -- nothing is included by
-    default, so a chart only gets a slide if BOTH the caller fetched it
-    AND the user selected it. One section-divider slide per non-empty
-    section; a section with nothing selected is skipped entirely.
-    comparisons/comparison_acs/comparison_bls: optional Comparative
-    Analysis section, see _build_comparative_section. heartbeat_rows/
-    market_overview_markets/comparison_costar: optional Commercial Real
-    Estate Analysis section (subject + optionally per-comparison-geo), see
-    _build_cre_section -- already-parsed (costar_heartbeat.parse_properties
-    output) and raw-bytes-per-class (costar_market_overview's own markets
-    shape) respectively, since the latter's parsing happens per-class
-    inside _add_market_overview_slides. smartre_rows: already-parsed,
-    already-subdivision-filtered smartre_sales.parse_sales_file() output
-    (subject only) -- spliced into the Housing Analysis section below
-    rather than getting its own divider, per the plan's original section
-    mapping."""
+    """geo_label: display name for the title slide, used as a fallback when
+    report_title is blank. acs_dashboard/bls_dashboard: already-fetched
+    {chart_key: ChartResult} dicts (empty dict if that domain had nothing
+    selected). selected_acs/selected_bls: the chart keys the user actually
+    opted into -- nothing is included by default, so a chart only gets a
+    slide if BOTH the caller fetched it AND the user selected it. One
+    section-divider slide per non-empty section; a section with nothing
+    selected is skipped entirely. comparisons/comparison_acs/comparison_bls:
+    optional Comparative Analysis section, see _build_comparative_section.
+    heartbeat_rows/market_overview_markets/comparison_costar: optional
+    Commercial Real Estate Analysis section (subject + optionally per-
+    comparison-geo), see _build_cre_section -- already-parsed
+    (costar_heartbeat.parse_properties output) and raw-bytes-per-class
+    (costar_market_overview's own markets shape) respectively, since the
+    latter's parsing happens per-class inside _add_market_overview_slides.
+    smartre_rows: already-parsed, already-subdivision-filtered
+    smartre_sales.parse_sales_file() output (subject only) -- spliced into
+    the Housing Analysis section below rather than getting its own divider,
+    per the plan's original section mapping. report_title: the user-typed
+    name for the report (optional) -- printed on the title slide in place
+    of geo_label when given; the caller still uses geo_label for the
+    downloaded filename fallback."""
     prs = Presentation(TEMPLATE_PATH)
-    _add_title_slide(prs, geo_label)
+    _add_title_slide(prs, report_title or geo_label)
 
     selected_acs_set = set(selected_acs)
-    side_toggle = ["left", "right"]
 
     for section, acs_keys in ACS_SECTION_CHARTS.items():
         section_acs = [k for k in acs_keys if k in selected_acs_set and k in acs_dashboard]
@@ -599,17 +608,12 @@ def build_master_deck(
             continue
 
         _add_section_divider(prs, section)
-        slide_count = 0
         for key in section_acs:
-            side = side_toggle[slide_count % 2]
-            add_dashboard_chart_slide(prs, section, acs_chart_title(key), acs_dashboard[key], side, ACS_CHART_FORMAT.get(key, "count"))
-            slide_count += 1
+            add_dashboard_chart_slide(prs, section, acs_chart_title(key), acs_dashboard[key], ACS_CHART_FORMAT.get(key, "count"))
         for key in section_bls:
-            side = side_toggle[slide_count % 2]
-            add_dashboard_chart_slide(prs, section, bls_chart_title(key, NAICS_SECTORS), bls_dashboard[key], side, _bls_chart_format(key))
-            slide_count += 1
+            add_dashboard_chart_slide(prs, section, bls_chart_title(key, NAICS_SECTORS), bls_dashboard[key], _bls_chart_format(key))
         if section_smartre:
-            _add_smartre_slides(prs, section, section_smartre, side_toggle, slide_count)
+            _add_smartre_slides(prs, section, section_smartre)
 
     _build_cre_section(prs, heartbeat_rows or [], market_overview_markets or [], comparison_costar or [])
 
