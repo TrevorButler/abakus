@@ -81,8 +81,9 @@ from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.enum.dml import MSO_THEME_COLOR
+from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
-from pptx.util import Inches, Pt
+from pptx.util import Emu, Inches, Pt
 
 from bls_dashboard import NAICS_SECTORS
 from costar_heartbeat import BROAD_CLASSES, _decade_class_table
@@ -192,12 +193,21 @@ _CHART_X = Inches(6.833)
 
 # Confirmed by inspecting how the reference deck's own real section-divider
 # slides positioned this placeholder (the layout's own default position is
-# a leftover off-slide draft position, not what any real slide used). Also
-# reused, unmodified, as the title slide's own text box position -- only
-# the font size/alignment differ between the two (see _add_title_slide).
+# a leftover off-slide draft position, not what any real slide used).
 _DIVIDER_TITLE_BOX = (Inches(0.396), Inches(1.362), Inches(12.767), Inches(2.269))
 _DIVIDER_FONT_SIZE = Pt(44)
-_TITLE_FONT_SIZE = Pt(66)  # 150% of the divider size, per explicit feedback
+
+# Title slide geometry -- per explicit feedback, ported directly from
+# "Report Builder/KB_ALT_PPTX_Theme.thmx"'s own "Section Header" layout
+# (its title placeholder's exact off/ext box and 60pt font size), not
+# derived from the divider box like the title slide's font size used to be.
+# The title slide itself uses this deck's own "Title Only" layout (plain
+# white background, no wave art) -- also per explicit feedback, picked as
+# closest of the KB-branded candidates reviewed.
+_TITLE_BOX = (Emu(831850), Emu(1709738), Emu(10515600), Emu(2852737))
+_TITLE_FONT_SIZE = Pt(60)
+_TITLE_BAR_HEIGHT = Inches(0.12)
+_TITLE_BAR_GAP = Inches(0.15)
 
 
 def _layout(prs: Presentation, name: str):
@@ -293,24 +303,34 @@ def add_dashboard_chart_slide(prs: Presentation, section: str, title: str, chart
 
 
 def _add_title_slide(prs: Presentation, title_text: str) -> None:
-    """Styled like _add_section_divider (same box position, bold/Arial/
-    accent1 color) so the cover reads as part of the same visual family as
-    the dividers, but centered and at 150% of the divider's font size (44pt
-    -> 66pt) so the cover is unmistakably the title, not just another
-    divider -- per explicit feedback."""
-    layout = _layout(prs, "Title Slide")
+    """"Title Only" (this deck's own plain, no-wave-art layout -- also used
+    for every chart slide) rather than the "Title Slide" layout's wave
+    background, per explicit feedback picking it as the closest match to a
+    reviewed KB-branded candidate. Title box position/size (60pt, left-
+    aligned) is ported from KB_ALT_PPTX_Theme.thmx's own "Section Header"
+    layout -- see _TITLE_BOX's own comment. A solid accent-color bar sits
+    just under the title text, per explicit feedback ("a green bar across
+    the page under the title slide text")."""
+    layout = _layout(prs, "Title Only")
     slide = prs.slides.add_slide(layout)
     title = slide.shapes.title
-    left, top, width, height = _DIVIDER_TITLE_BOX
+    left, top, width, height = _TITLE_BOX
     title.left, title.top, title.width, title.height = left, top, width, height
+    title.text_frame.word_wrap = True
     title.text_frame.text = title_text
     paragraph = title.text_frame.paragraphs[0]
-    paragraph.alignment = PP_ALIGN.CENTER
+    paragraph.alignment = PP_ALIGN.LEFT
     run = paragraph.runs[0]
     run.font.bold = True
     run.font.size = _TITLE_FONT_SIZE
     run.font.name = "Arial"
     run.font.color.theme_color = MSO_THEME_COLOR.ACCENT_1
+
+    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top + height + _TITLE_BAR_GAP, width, _TITLE_BAR_HEIGHT)
+    bar.fill.solid()
+    bar.fill.fore_color.theme_color = MSO_THEME_COLOR.ACCENT_1
+    bar.line.fill.background()
+    bar.shadow.inherit = False
 
 
 def _add_section_divider(prs: Presentation, section: str) -> None:
