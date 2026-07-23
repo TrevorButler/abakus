@@ -72,7 +72,7 @@ export type RateBasis = '5yr' | '10yr' | 'custom'
 export type TurnoverTier = 'static' | 'dampened' | 'standard' | 'elevated' | 'aggressive' | 'custom'
 export type DemandBasis = 'annual' | 'total'
 
-export type UserRole = 'user' | 'admin'
+export type UserRole = 'user' | 'beta' | 'admin'
 
 export interface AuthUser {
   email: string

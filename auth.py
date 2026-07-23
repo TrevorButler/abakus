@@ -8,10 +8,11 @@ email is on the app_users allowlist, sets a signed httponly session cookie
 (via Starlette's SessionMiddleware, added in api.py) and sends the browser
 back to the frontend.
 
-require_user/require_admin are dependency *factories* (not FastAPI
-dependencies themselves) so api.py can build them once, closing over the
-single shared engine, rather than each request opening a second connection
-pool the way a module-level get_engine() call here would.
+require_user/require_admin/require_beta_or_admin are dependency
+*factories* (not FastAPI dependencies themselves) so api.py can build them
+once, closing over the single shared engine, rather than each request
+opening a second connection pool the way a module-level get_engine() call
+here would.
 """
 
 from authlib.integrations.starlette_client import OAuth
@@ -47,6 +48,20 @@ def make_require_admin(engine):
         return user
 
     return require_admin
+
+
+def make_require_beta_or_admin(engine):
+    """Gates WIP modules -- 'admin' already implies this (a strict
+    superset), so only 'user' is turned away. Not wired into any route
+    yet; ready for the first beta-gated module."""
+    require_user = make_require_user(engine)
+
+    def require_beta_or_admin(user: dict = Depends(require_user)) -> dict:
+        if user["role"] not in ("beta", "admin"):
+            raise HTTPException(status_code=403, detail="Beta access required")
+        return user
+
+    return require_beta_or_admin
 
 
 def build_auth_router(engine, google_client_id: str, google_client_secret: str, backend_url: str, frontend_url: str) -> APIRouter:

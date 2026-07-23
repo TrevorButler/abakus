@@ -111,6 +111,7 @@ function AdminPanel({ currentEmail }: { currentEmail: string }) {
               className="border border-abakus-charcoal/20 rounded-lg px-3 py-2 bg-white text-abakus-charcoal"
             >
               <option value="user">User</option>
+              <option value="beta">Beta</option>
               <option value="admin">Admin</option>
             </select>
           </div>

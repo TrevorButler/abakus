@@ -1026,7 +1026,7 @@ def _deck_response(prs, filename: str) -> StreamingResponse:
 
 class AddUserBody(BaseModel):
     email: str
-    role: Literal["user", "admin"] = "user"
+    role: Literal["user", "beta", "admin"] = "user"
 
 
 # JSON body (not query params or form data) on the POST route is deliberate:
